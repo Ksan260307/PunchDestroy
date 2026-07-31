@@ -1,0 +1,56 @@
+/**
+ * 最初から最後まで通しで確かめる。
+ */
+
+import { describe, expect, it } from 'vitest';
+import { worldFingerprint } from '../src/core/fingerprint';
+import { replay, Session } from '../src/core/session';
+import { STEPS_PER_SECOND, TOTAL_GRAINS } from '../src/core/constants';
+import { grainsRemaining, destroyedRatio, recountBlocks } from '../src/core/world';
+import { playScript } from './helpers';
+
+describe('通しプレイ', () => {
+  const session = new Session(20260801);
+  const steps = playScript(session, { every: 4 });
+  const world = session.world;
+
+  it('最後まで壊しきれる', () => {
+    expect(world.remainingUnits).toBe(0);
+    expect(grainsRemaining(world)).toBe(0);
+    expect(destroyedRatio(world)).toBe(1);
+  });
+
+  it('壊しきるまでの長さが遊べる範囲に収まっている', () => {
+    const seconds = steps / STEPS_PER_SECOND;
+    expect(seconds).toBeGreaterThan(15);
+    expect(seconds).toBeLessThan(240);
+  });
+
+  it('殴った回数が記録と一致する', () => {
+    expect(world.hitCount).toBe(session.hitLogLength);
+    expect(world.hitCount).toBeGreaterThan(50);
+  });
+
+  it('区画ごとの集計が最後まで狂わない', () => {
+    const counted = recountBlocks(world);
+    for (let i = 0; i < counted.length; i++) {
+      expect(world.blockRemaining[i]).toBe(counted[i]);
+    }
+  });
+
+  it('壊した粒の合計がちょうど1兆になる', () => {
+    expect(TOTAL_GRAINS - grainsRemaining(world)).toBe(TOTAL_GRAINS);
+  });
+
+  it('通しでも記録から完全に作り直せる', () => {
+    expect(worldFingerprint(replay(session.toRecord()))).toBe(worldFingerprint(world));
+  });
+
+  it('同じ台本なら別の実行でも同じ結果になる', () => {
+    const again = new Session(20260801);
+    playScript(again, { every: 4 });
+    expect(worldFingerprint(again.world)).toBe(worldFingerprint(world));
+    expect(again.world.score).toBe(world.score);
+    expect(again.world.bestCombo).toBe(world.bestCombo);
+  });
+});

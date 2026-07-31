@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#f4f1ec" />
+    <meta name="description" content="1兆個の粒でできた石のリンゴを、好きな角度から殴って砕くゲーム" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="PUNCH DESTROY" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>PUNCH DESTROY</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%91%8A%3C/text%3E%3C/svg%3E" />
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%91%8A%3C/text%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="stage">
+      <canvas id="scene"></canvas>
+      <canvas id="overlay"></canvas>
+
+      <div id="hud" class="hidden">
+        <header class="bar">
+          <div class="card counter">
+            <span class="label">残りの粒</span>
+            <span id="grains" class="grains">1,000,000,000,000</span>
+            <div class="track"><i id="bar-fill"></i></div>
+          </div>
+          <div class="side">
+            <div class="card metric">
+              <span class="label">破壊</span>
+              <span id="percent" class="value">0.00<small>%</small></span>
+            </div>
+            <div class="card metric">
+              <span class="label">スコア</span>
+              <span id="score" class="value">0</span>
+            </div>
+            <div id="combo-chip" class="card metric combo hidden">
+              <span class="label">コンボ</span>
+              <span id="combo-count" class="value">0</span>
+            </div>
+          </div>
+        </header>
+
+        <footer class="bar bottom">
+          <span id="hint" class="hint">タップで殴る／なぞって回す／長押しで渾身の一撃</span>
+          <div class="tools">
+            <button id="mute" type="button" class="tool" aria-label="音を切り替える">♪</button>
+            <button id="recenter" type="button" class="tool" aria-label="向きを戻す">⟲</button>
+            <span id="stats" class="stats"></span>
+          </div>
+        </footer>
+
+        <div id="charge" class="charge hidden"><i id="charge-fill"></i></div>
+      </div>
+
+      <div id="title" class="screen">
+        <div class="screen-inner">
+          <h1>PUNCH<br /><span>DESTROY</span></h1>
+          <p class="lead"><b>1,000,000,000,000</b> 個の粒でできた石のリンゴ。</p>
+          <p class="sub">殴る。砕く。ぜんぶ消す。</p>
+          <button id="start" type="button" class="primary">殴りはじめる</button>
+          <ul class="tips">
+            <li><b>タップ</b>で殴る</li>
+            <li><b>なぞる</b>と回って好きな角度から狙える</li>
+            <li><b>長押し</b>で渾身の一撃／<b>2本指</b>で寄り引き</li>
+          </ul>
+        </div>
+      </div>
+
+      <div id="result" class="screen hidden">
+        <div class="screen-inner">
+          <h2 id="result-title">完全破壊！</h2>
+          <dl class="result-stats">
+            <div><dt>かかった時間</dt><dd id="r-time">-</dd></div>
+            <div><dt>殴った回数</dt><dd id="r-hits">-</dd></div>
+            <div><dt>最大コンボ</dt><dd id="r-combo">-</dd></div>
+            <div><dt>スコア</dt><dd id="r-score">-</dd></div>
+          </dl>
+          <div class="buttons">
+            <button id="again" type="button" class="primary">もう一度</button>
+            <button id="watch" type="button" class="ghost">今のプレイを見返す</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="replay-badge" class="replay-badge hidden">▶ 見返し中</div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

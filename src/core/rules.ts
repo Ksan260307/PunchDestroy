@@ -1,0 +1,354 @@
+/**
+ * 状態を1つ進める規則。
+ *
+ * 大事な性質が2つある。
+ *
+ *  1. 同じ状態と同じ操作からは必ず同じ結果になる。
+ *     時計・実測フレームレート・カメラ・乱数生成器の類は一切参照しない。
+ *
+ *  2. 処理の順番を入れ替えても結果が変わらない。
+ *     1発の削り量は「その打撃」と「そのマス」だけから決まり、
+ *     いまの残り量を見ない。引き算は 0 で止めるので、
+ *     どの順に当てても最後の残り量は同じ値に落ち着く。
+ *     これがあるおかげで、あとから並列化や処理の間引きを入れても壊れない。
+ */
+
+import {
+  BLOCKS,
+  BLOCK_COLLAPSING,
+  BLOCK_COUNT,
+  BLOCK_DAMAGED,
+  BLOCK_GONE,
+  BLOCK_SIZE,
+  COLLAPSE_PERCENT,
+  COMBO_WINDOW_STEPS,
+  CRUMB_DENSITY,
+  FINALE_PERCENT,
+  GRID,
+  HIT_SMASH,
+  JAB_POWER,
+  JAB_RADIUS,
+  RUSH_COMBO,
+  RUSH_STEPS,
+  SMASH_POWER,
+  SMASH_RADIUS,
+} from './constants';
+import { hash2, hash3 } from './random';
+import { blockBounds, isRush, type World } from './world';
+
+export interface Hit {
+  readonly step: number;
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly kind: number;
+}
+
+export interface HitFeedback {
+  x: number;
+  y: number;
+  z: number;
+  radius: number;
+  power: number;
+  /** その打撃が単独で与えた削り量（他の打撃と重なっても値は変わらない） */
+  damage: number;
+  /** 実際に減った量 */
+  removed: number;
+  kind: number;
+}
+
+export interface StepReport {
+  step: number;
+  hits: HitFeedback[];
+  removed: number;
+  scoreGain: number;
+  combo: number;
+  comboBroken: boolean;
+  rush: boolean;
+  rushStarted: boolean;
+  cleared: boolean;
+  /** この回に崩れ始めた区画 */
+  collapsing: number[];
+  /** この回に消えた区画 */
+  vanished: number[];
+  dirtyValid: boolean;
+  dirtyX0: number;
+  dirtyY0: number;
+  dirtyZ0: number;
+  dirtyX1: number;
+  dirtyY1: number;
+  dirtyZ1: number;
+}
+
+export interface HitParams {
+  radius: number;
+  power: number;
+}
+
+/** 打撃の強さは、そのときの状態（連打数・強化中か）だけから決まる */
+export function hitParams(world: World, kind: number): HitParams {
+  const boost = Math.min(world.combo, 60);
+  let radius = kind === HIT_SMASH ? SMASH_RADIUS : JAB_RADIUS;
+  let power = kind === HIT_SMASH ? SMASH_POWER : JAB_POWER;
+  radius += (boost / 24) | 0;
+  power += boost * 4;
+  if (isRush(world)) {
+    radius = ((radius * 5) / 4) | 0;
+    power = ((power * 8) / 5) | 0;
+  }
+  return { radius, power };
+}
+
+function widen(
+  report: StepReport,
+  x0: number,
+  y0: number,
+  z0: number,
+  x1: number,
+  y1: number,
+  z1: number,
+): void {
+  if (!report.dirtyValid) {
+    report.dirtyValid = true;
+    report.dirtyX0 = x0;
+    report.dirtyY0 = y0;
+    report.dirtyZ0 = z0;
+    report.dirtyX1 = x1;
+    report.dirtyY1 = y1;
+    report.dirtyZ1 = z1;
+    return;
+  }
+  if (x0 < report.dirtyX0) report.dirtyX0 = x0;
+  if (y0 < report.dirtyY0) report.dirtyY0 = y0;
+  if (z0 < report.dirtyZ0) report.dirtyZ0 = z0;
+  if (x1 > report.dirtyX1) report.dirtyX1 = x1;
+  if (y1 > report.dirtyY1) report.dirtyY1 = y1;
+  if (z1 > report.dirtyZ1) report.dirtyZ1 = z1;
+}
+
+function clampCoord(value: number): number {
+  if (value < 0) return 0;
+  if (value > GRID - 1) return GRID - 1;
+  return value;
+}
+
+/**
+ * 打撃1発を反映する。
+ * 削り量は「種・回数・打撃の中身・マス番号」だけから決まるので、
+ * 同じ回に来た打撃の並び順を入れ替えても結果は変わらない。
+ */
+export function applyHit(world: World, hit: Hit, report: StepReport): HitFeedback {
+  const { radius, power } = hitParams(world, hit.kind);
+  const cx = hit.x;
+  const cy = hit.y;
+  const cz = hit.z;
+  const r2 = radius * radius;
+  const r4 = r2 * r2;
+  const salt = hash2(world.seed, world.step);
+  const key = (hit.kind << 24) ^ ((cz << 16) | (cy << 8) | cx);
+
+  const minX = clampCoord(cx - radius);
+  const maxX = clampCoord(cx + radius);
+  const minY = clampCoord(cy - radius);
+  const maxY = clampCoord(cy + radius);
+  const minZ = clampCoord(cz - radius);
+  const maxZ = clampCoord(cz + radius);
+
+  let intended = 0;
+  let removed = 0;
+
+  for (let z = minZ; z <= maxZ; z++) {
+    const dz = z - cz;
+    const dz2 = dz * dz;
+    const bz = (z / BLOCK_SIZE) | 0;
+    for (let y = minY; y <= maxY; y++) {
+      const dy = y - cy;
+      const d2yz = dz2 + dy * dy;
+      if (d2yz > r2) continue;
+      const rowBlock = (bz * BLOCKS + ((y / BLOCK_SIZE) | 0)) * BLOCKS;
+      const row = (z * GRID + y) * GRID;
+      for (let x = minX; x <= maxX; x++) {
+        const dx = x - cx;
+        const d2 = d2yz + dx * dx;
+        if (d2 > r2) continue;
+
+        const index = row + x;
+        const before = world.density[index];
+        if (before === 0) continue;
+
+        const falloff = r2 - d2;
+        let amount = Math.floor((power * falloff * falloff) / r4);
+        if (amount <= 0) continue;
+        // 削れ方のムラ（最大で +12% ほど）
+        amount += (amount * (hash3(salt, key, index) & 63)) >> 9;
+        intended += amount;
+
+        let after = before - amount;
+        if (after < CRUMB_DENSITY) after = 0;
+        const diff = before - after;
+        if (diff === 0) continue;
+
+        world.density[index] = after;
+        world.blockRemaining[rowBlock + ((x / BLOCK_SIZE) | 0)] -= diff;
+        removed += diff;
+      }
+    }
+  }
+
+  world.remainingUnits -= removed;
+  if (removed > 0) widen(report, minX, minY, minZ, maxX, maxY, maxZ);
+
+  return { x: cx, y: cy, z: cz, radius, power, damage: intended, removed, kind: hit.kind };
+}
+
+/** 崩れ始めた区画を、まとめて削り落とす */
+export function applyCollapse(world: World, report: StepReport): number {
+  let removed = 0;
+  for (let block = 0; block < BLOCK_COUNT; block++) {
+    if (world.blockState[block] !== BLOCK_COLLAPSING) continue;
+    if (world.blockRemaining[block] <= 0) continue;
+
+    const bounds = blockBounds(block);
+    let touched = false;
+    for (let z = bounds.z0; z <= bounds.z1; z++) {
+      for (let y = bounds.y0; y <= bounds.y1; y++) {
+        const row = (z * GRID + y) * GRID;
+        for (let x = bounds.x0; x <= bounds.x1; x++) {
+          const index = row + x;
+          const before = world.density[index];
+          if (before === 0) continue;
+          // 崩れにくさを塊ごとに散らして、区画の四角い形が出ないようにする
+          const clump = (x >> 1) + ((y >> 1) << 6) + ((z >> 1) << 12);
+          const resist = 14 + (hash2(clump, 0x27d4) & 31);
+          let after = before - resist;
+          if (after < CRUMB_DENSITY) after = 0;
+          const diff = before - after;
+          world.density[index] = after;
+          world.blockRemaining[block] -= diff;
+          removed += diff;
+          touched = true;
+        }
+      }
+    }
+    if (touched) {
+      widen(report, bounds.x0, bounds.y0, bounds.z0, bounds.x1, bounds.y1, bounds.z1);
+    }
+  }
+  world.remainingUnits -= removed;
+  return removed;
+}
+
+/** 状態を1つ進める。戻り値は使い回しの入れ物なので、その場で読むこと */
+export function advance(world: World, hits: readonly Hit[]): StepReport {
+  const report = world.report;
+  report.step = world.step;
+  report.hits.length = 0;
+  report.collapsing.length = 0;
+  report.vanished.length = 0;
+  report.removed = 0;
+  report.scoreGain = 0;
+  report.comboBroken = false;
+  report.rushStarted = false;
+  report.cleared = false;
+  report.dirtyValid = false;
+
+  const rushBefore = isRush(world);
+
+  let removed = 0;
+  for (let i = 0; i < hits.length; i++) {
+    const feedback = applyHit(world, hits[i], report);
+    removed += feedback.removed;
+    report.hits.push(feedback);
+  }
+  removed += applyCollapse(world, report);
+  report.removed = removed;
+
+  updateBlocks(world, report);
+  updateCombo(world, hits.length, report);
+  updateScore(world, report);
+  checkFinale(world);
+
+  if (world.remainingUnits <= 0 && world.clearedStep < 0) {
+    world.clearedStep = world.step;
+    report.cleared = true;
+  }
+
+  report.combo = world.combo;
+  report.rush = isRush(world);
+  report.rushStarted = report.rush && !rushBefore;
+
+  world.step++;
+  return report;
+}
+
+function updateBlocks(world: World, report: StepReport): void {
+  for (let block = 0; block < BLOCK_COUNT; block++) {
+    const origin = world.blockOrigin[block];
+    if (origin === 0) continue;
+
+    const state = world.blockState[block];
+    if (state === BLOCK_GONE) continue;
+
+    const left = world.blockRemaining[block];
+    if (left <= 0) {
+      world.blockState[block] = BLOCK_GONE;
+      report.vanished.push(block);
+      continue;
+    }
+    if (state === BLOCK_COLLAPSING) continue;
+
+    if (left * 100 < origin * COLLAPSE_PERCENT) {
+      world.blockState[block] = BLOCK_COLLAPSING;
+      report.collapsing.push(block);
+    } else if (left < origin) {
+      world.blockState[block] = BLOCK_DAMAGED;
+    }
+  }
+}
+
+function updateCombo(world: World, hitCount: number, report: StepReport): void {
+  if (hitCount > 0) {
+    const before = world.combo;
+    const linked = world.step - world.lastHitStep <= COMBO_WINDOW_STEPS;
+    if (linked) {
+      world.combo += hitCount;
+    } else {
+      if (world.combo > 0) report.comboBroken = true;
+      world.combo = hitCount;
+    }
+    world.lastHitStep = world.step;
+    world.hitCount += hitCount;
+    if (world.combo > world.bestCombo) world.bestCombo = world.combo;
+    // 連打数が節目を越えるたびに強化状態を入れ直す
+    const reached = (world.combo / RUSH_COMBO) | 0;
+    const had = (before / RUSH_COMBO) | 0;
+    if (world.combo >= RUSH_COMBO && reached > had) {
+      world.rushUntilStep = world.step + RUSH_STEPS;
+    }
+  } else if (world.combo > 0 && world.step - world.lastHitStep > COMBO_WINDOW_STEPS) {
+    world.combo = 0;
+    world.rushUntilStep = 0;
+    report.comboBroken = true;
+  }
+}
+
+function updateScore(world: World, report: StepReport): void {
+  if (report.removed <= 0) return;
+  let multiplier = 100 + Math.min(world.combo, 300) * 6;
+  if (isRush(world)) multiplier *= 2;
+  const gain = Math.floor((report.removed * multiplier) / 100);
+  world.score += gain;
+  report.scoreGain = gain;
+}
+
+/** 残りわずかになったら全部まとめて崩す（最後の詰めを退屈にしない） */
+function checkFinale(world: World): void {
+  if (world.remainingUnits <= 0) return;
+  if (world.remainingUnits * 100 >= world.totalUnits * FINALE_PERCENT) return;
+  for (let block = 0; block < BLOCK_COUNT; block++) {
+    const state = world.blockState[block];
+    if (state === BLOCK_GONE || state === BLOCK_COLLAPSING) continue;
+    if (world.blockRemaining[block] <= 0) continue;
+    world.blockState[block] = BLOCK_COLLAPSING;
+  }
+}
