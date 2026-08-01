@@ -131,6 +131,15 @@ export class SoundKit {
     this.tone('triangle', pitch, pitch * 1.02, 0.1, 0.09 + Math.min(0.12, combo * 0.004));
   }
 
+  /** 空振り。当たらなかったことが耳でも分かるように、ごく軽い音にする */
+  whiff(): void {
+    if (!this.ready()) return;
+    const now = this.ctx!.currentTime;
+    if (now - this.lastPlay < 0.05) return;
+    this.lastPlay = now;
+    this.burst(0.1, 0.08, 'highpass', 900, 3200, 0.6);
+  }
+
   crumble(): void {
     if (!this.ready()) return;
     this.burst(0.7, 0.5, 'lowpass', 900, 90, 0.7);

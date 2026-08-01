@@ -24,7 +24,10 @@ function onClick(id: string, action: () => void): void {
 onClick('start', () => game.begin());
 onClick('again', () => game.begin());
 onClick('watch', () => game.replayLast());
+onClick('back', () => game.showTitle());
 onClick('recenter', () => game.recenter());
+onClick('restart', () => game.restart());
+onClick('home', () => game.showTitle());
 
 const muteButton = element<HTMLButtonElement>('mute');
 muteButton.addEventListener('click', (event) => {

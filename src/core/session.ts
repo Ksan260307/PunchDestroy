@@ -13,15 +13,15 @@
  */
 
 import { GRID, HIT_JAB } from './constants';
-import { shapeFingerprint } from './fingerprint';
+import { pushInt, shapeFingerprint, startDigest, toHex } from './fingerprint';
 import { advance, type Hit, type StepReport } from './rules';
 import { getStatueShape, SHAPE_NAME } from './shape';
 import { createWorld, restore, type World, type WorldSnapshot } from './world';
 
 /** 記録の入れ物の版。中身の形式を変えたら上げる */
-export const RECORD_FORMAT = 2;
+export const RECORD_FORMAT = 3;
 /** 進行規則の版。削り方や連打の扱いを変えたら上げる */
-export const RULES_VERSION = 'punch-2';
+export const RULES_VERSION = 'punch-3';
 
 /** 1回の計算で受け付ける打撃数の上限 */
 export const MAX_HITS_PER_STEP = 8;
@@ -47,6 +47,18 @@ export interface SessionRecord {
   steps: number;
   /** [回, x, y, z, 種類] の並び。回の昇順 */
   hits: number[];
+  /** 操作列そのものの指紋。途中で欠けたり書き換わった記録を弾く */
+  digest: string;
+}
+
+/** 記録の中身から指紋を作る */
+export function recordDigest(seed: number, steps: number, hits: readonly number[]): string {
+  let d = startDigest();
+  d = pushInt(d, seed);
+  d = pushInt(d, steps);
+  d = pushInt(d, hits.length);
+  for (let i = 0; i < hits.length; i++) d = pushInt(d, hits[i]);
+  return toHex(d);
 }
 
 export class ReplayRejected extends Error {
@@ -96,11 +108,14 @@ export class Session {
   }
 
   toRecord(): SessionRecord {
+    const steps = this.world.step;
+    const hits = this.log.slice();
     return {
       signature: currentSignature(),
       seed: this.seed,
-      steps: this.world.step,
-      hits: this.log.slice(),
+      steps,
+      hits,
+      digest: recordDigest(this.seed, steps, hits),
     };
   }
 }
@@ -118,6 +133,13 @@ export function ensureReplayable(record: SessionRecord): void {
   const expected = currentSignature();
   if (record.signature !== expected) {
     throw new ReplayRejected(expected, record.signature);
+  }
+  const digest = recordDigest(record.seed, record.steps, record.hits);
+  if (record.digest !== digest) {
+    throw new ReplayRejected(digest, record.digest);
+  }
+  if (record.hits.length % ENTRY !== 0) {
+    throw new ReplayRejected('操作の並びが揃っていること', `${record.hits.length} 個`);
   }
 }
 
@@ -220,6 +242,7 @@ export function decodeRecord(text: string): SessionRecord {
   const raw = JSON.parse(text) as Partial<SessionRecord>;
   if (
     typeof raw.signature !== 'string' ||
+    typeof raw.digest !== 'string' ||
     typeof raw.seed !== 'number' ||
     typeof raw.steps !== 'number' ||
     !Array.isArray(raw.hits) ||
@@ -227,5 +250,11 @@ export function decodeRecord(text: string): SessionRecord {
   ) {
     throw new Error('記録の形式が違います');
   }
-  return { signature: raw.signature, seed: raw.seed, steps: raw.steps, hits: raw.hits as number[] };
+  return {
+    signature: raw.signature,
+    seed: raw.seed,
+    steps: raw.steps,
+    hits: raw.hits as number[],
+    digest: raw.digest,
+  };
 }

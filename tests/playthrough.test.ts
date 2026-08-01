@@ -10,8 +10,9 @@ import { grainsRemaining, destroyedRatio, recountBlocks } from '../src/core/worl
 import { playScript } from './helpers';
 
 describe('通しプレイ', () => {
+  // 6 回／秒くらいの、人が続けられる速さで殴り続ける
   const session = new Session(20260801);
-  const steps = playScript(session, { every: 4 });
+  const steps = playScript(session, { every: 10 });
   const world = session.world;
 
   it('最後まで壊しきれる', () => {
@@ -46,9 +47,17 @@ describe('通しプレイ', () => {
     expect(worldFingerprint(replay(session.toRecord()))).toBe(worldFingerprint(world));
   });
 
+  it('連打が速いほど早く壊しきれる', () => {
+    const fast = new Session(20260801);
+    const fastSteps = playScript(fast, { every: 4 });
+    expect(fast.world.remainingUnits).toBe(0);
+    expect(fastSteps).toBeLessThan(steps);
+    expect(fast.hitLogLength).toBeLessThan(world.hitCount);
+  });
+
   it('同じ台本なら別の実行でも同じ結果になる', () => {
     const again = new Session(20260801);
-    playScript(again, { every: 4 });
+    playScript(again, { every: 10 });
     expect(worldFingerprint(again.world)).toBe(worldFingerprint(world));
     expect(again.world.score).toBe(world.score);
     expect(again.world.bestCombo).toBe(world.bestCombo);

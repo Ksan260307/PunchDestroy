@@ -8,10 +8,12 @@ import {
   HIT_JAB,
   HIT_SMASH,
   RUSH_COMBO,
+  RUSH_RADIUS_SCALE,
+  RUSH_STEPS,
   VOXEL_COUNT,
 } from '../src/core/constants';
 import { advance, applyHit, hitParams, type Hit } from '../src/core/rules';
-import { createWorld, isRush, recountBlocks, voxelIndex } from '../src/core/world';
+import { createWorld, isRush, recountBlocks, rushStepsLeft, voxelIndex } from '../src/core/world';
 import { digestOfArray, toHex, worldFingerprint } from '../src/core/fingerprint';
 import { TestShuffler } from './helpers';
 
@@ -112,11 +114,84 @@ describe('殴ったときの削れ方', () => {
     const combo = hitParams(world, HIT_JAB);
     expect(combo.power).toBeGreaterThan(plain.power);
     expect(combo.radius).toBeGreaterThanOrEqual(plain.radius);
+  });
+});
 
+describe('ラッシュ中の一撃', () => {
+  it('殴る範囲がちょうど3倍になる', () => {
+    const world = createWorld(1);
+    const normal = hitParams(world, HIT_JAB);
     world.rushUntilStep = world.step + 10;
     const rush = hitParams(world, HIT_JAB);
-    expect(rush.power).toBeGreaterThan(combo.power);
-    expect(rush.radius).toBeGreaterThan(combo.radius);
+    expect(rush.radius).toBe(normal.radius * RUSH_RADIUS_SCALE);
+    expect(rush.sharpness).toBeGreaterThan(0);
+
+    const smashNormal = hitParams(world, HIT_SMASH);
+    world.rushUntilStep = 0;
+    expect(smashNormal.radius).toBe(hitParams(world, HIT_SMASH).radius * RUSH_RADIUS_SCALE);
+  });
+
+  it('連打数が上がっても3倍の関係は崩れない', () => {
+    const world = createWorld(1);
+    for (const combo of [0, 24, 48, 60, 120]) {
+      world.combo = combo;
+      world.rushUntilStep = 0;
+      const normal = hitParams(world, HIT_JAB).radius;
+      world.rushUntilStep = world.step + 10;
+      expect(hitParams(world, HIT_JAB).radius).toBe(normal * RUSH_RADIUS_SCALE);
+    }
+  });
+
+  it('広く削れて、中心ほど深い', () => {
+    const normal = createWorld(21);
+    advance(normal, [{ step: 0, x: C, y: C, z: C, kind: HIT_JAB }]);
+
+    const rush = createWorld(21);
+    rush.rushUntilStep = 999;
+    advance(rush, [{ step: 0, x: C, y: C, z: C, kind: HIT_JAB }]);
+
+    // 通常の範囲（半径8）では届かない距離まで削れている
+    const outside = voxelIndex(C + 14, C, C);
+    expect(normal.density[outside]).toBe(normal.origin[outside]);
+    expect(rush.density[outside]).toBeLessThan(normal.density[outside]);
+
+    // 中心は抜けている
+    expect(rush.density[voxelIndex(C, C, C)]).toBe(0);
+    // ふちへ行くほど浅い
+    const near = rush.density[voxelIndex(C + 6, C, C)];
+    const mid = rush.density[voxelIndex(C + 10, C, C)];
+    const far = rush.density[voxelIndex(C + 14, C, C)];
+    const edge = rush.density[voxelIndex(C + 18, C, C)];
+    expect(near).toBeLessThanOrEqual(mid);
+    expect(mid).toBeLessThanOrEqual(far);
+    expect(far).toBeLessThanOrEqual(edge);
+  });
+
+  it('1発で削れる量は通常よりずっと多い', () => {
+    const normal = createWorld(22);
+    const a = advance(normal, [{ step: 0, x: C, y: C, z: C, kind: HIT_JAB }]).removed;
+    const rush = createWorld(22);
+    rush.rushUntilStep = 999;
+    const b = advance(rush, [{ step: 0, x: C, y: C, z: C, kind: HIT_JAB }]).removed;
+    expect(b).toBeGreaterThan(a * 4);
+    // それでも一撃で終わらない程度に抑えてある
+    expect(b).toBeLessThan(rush.totalUnits * 0.05);
+  });
+
+  it('残り時間が減っていき、切れると元に戻る', () => {
+    const world = createWorld(23);
+    for (let i = 0; i < RUSH_COMBO; i++) {
+      advance(world, [{ step: world.step, x: C + (i % 6), y: C, z: C, kind: HIT_JAB }]);
+    }
+    expect(isRush(world)).toBe(true);
+    const left = rushStepsLeft(world);
+    expect(left).toBeGreaterThan(0);
+    advance(world, []);
+    expect(rushStepsLeft(world)).toBe(left - 1);
+
+    for (let i = 0; i < RUSH_STEPS + 5; i++) advance(world, []);
+    expect(isRush(world)).toBe(false);
+    expect(rushStepsLeft(world)).toBe(0);
   });
 });
 

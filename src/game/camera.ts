@@ -23,13 +23,27 @@ export interface Projected {
 
 const MIN_PITCH = -1.35;
 const MAX_PITCH = 1.35;
-const MIN_DISTANCE = 2.6;
-const MAX_DISTANCE = 6.6;
+
+/** 標準の引き具合 */
+const BASE_DISTANCE = 4.6;
+/** これ以上は近づかない（近づきすぎて中に入らないため） */
+const MIN_DISTANCE = 1.35;
+const MAX_DISTANCE = 7.5;
+
+/**
+ * 拡大はまず「近づく」ことで、それ以上は「画角を狭める」ことで進める。
+ * 石像の中へ入り込まずに、細かいところまで大きく見られる。
+ */
+export const MIN_ZOOM = 0.62;
+export const MAX_ZOOM = 18;
+/** 近づくだけで届く倍率。これを超えたら画角を狭めていく */
+const PULL_LIMIT = BASE_DISTANCE / MIN_DISTANCE;
 
 export class OrbitCamera {
   yaw = 0.55;
   pitch = 0.22;
-  distance = 4.6;
+  /** 1 が標準。大きいほど拡大 */
+  zoom = 1;
   fov = (34 * Math.PI) / 180;
 
   private spinYaw = 0;
@@ -54,10 +68,22 @@ export class OrbitCamera {
 
   tanHalf = Math.tan(this.fov / 2);
   aspect = 1;
+  distance = BASE_DISTANCE;
+
+  /** いまの拡大倍率（標準を 1 とする見かけの大きさ） */
+  get magnification(): number {
+    return this.zoom;
+  }
 
   refresh(width: number, height: number): void {
     this.aspect = width / Math.max(1, height);
-    this.tanHalf = Math.tan(this.fov / 2);
+
+    const zoom = clamp(this.zoom, MIN_ZOOM, MAX_ZOOM);
+    this.zoom = zoom;
+    this.distance = clamp(BASE_DISTANCE / zoom, MIN_DISTANCE, MAX_DISTANCE);
+    // 近づける限界を超えたぶんは画角を狭めて拡大する
+    const narrow = zoom > PULL_LIMIT ? PULL_LIMIT / zoom : 1;
+    this.tanHalf = Math.tan(this.fov / 2) * narrow;
 
     const yaw = this.yaw + this.kickYaw;
     const pitch = clamp(this.pitch + this.kickPitch, MIN_PITCH, MAX_PITCH);
@@ -90,16 +116,19 @@ export class OrbitCamera {
     this.uz = this.rx * this.fy - this.ry * this.fx;
   }
 
-  /** 指の動きで回す */
+  /** 指の動きで回す。拡大しているほどゆっくり回して狙いを付けやすくする */
   orbit(dx: number, dy: number): void {
-    this.yaw -= dx;
-    this.pitch = clamp(this.pitch + dy, MIN_PITCH, MAX_PITCH);
-    this.spinYaw = -dx * 12;
-    this.spinPitch = dy * 12;
+    const slow = 1 / Math.max(1, Math.sqrt(this.zoom));
+    const ax = dx * slow;
+    const ay = dy * slow;
+    this.yaw -= ax;
+    this.pitch = clamp(this.pitch + ay, MIN_PITCH, MAX_PITCH);
+    this.spinYaw = -ax * 12;
+    this.spinPitch = ay * 12;
   }
 
   zoomBy(factor: number): void {
-    this.distance = clamp(this.distance / factor, MIN_DISTANCE, MAX_DISTANCE);
+    this.zoom = clamp(this.zoom * factor, MIN_ZOOM, MAX_ZOOM);
   }
 
   /** 殴った反動でわずかに揺らす */
@@ -131,7 +160,8 @@ export class OrbitCamera {
   reset(): void {
     this.yaw = 0.55;
     this.pitch = 0.22;
-    this.distance = 4.6;
+    this.zoom = 1;
+    this.distance = BASE_DISTANCE;
     this.spinYaw = 0;
     this.spinPitch = 0;
     this.kickYaw = 0;

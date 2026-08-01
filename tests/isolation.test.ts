@@ -112,6 +112,18 @@ describe('表示は進行に影響しない', () => {
     expect(effects.count).toBeGreaterThan(0);
     expect(result.punches).toBeGreaterThan(20);
   });
+
+  it('揺れを控えめにしても進行は変わらない', () => {
+    const calm = new EffectSystem();
+    calm.motionScale = 0;
+    const result = run({ effects: calm, quality: 2 });
+    expect(result.fingerprint).toBe(baseline.fingerprint);
+    // 揺れは止まるが、破片は出ている
+    calm.update(1 / 60);
+    expect(Math.abs(calm.shakeX)).toBe(0);
+    expect(Math.abs(calm.shakeY)).toBe(0);
+    expect(calm.count).toBeGreaterThan(0);
+  });
 });
 
 describe('時計に左右されない', () => {

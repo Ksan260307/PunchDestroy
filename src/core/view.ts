@@ -5,7 +5,15 @@
  * 逆向き（表示側から状態を書き換える）は用意しない。
  */
 
-import { grainsRemaining, grainsDestroyed, destroyedRatio, isRush, type World } from './world';
+import { RUSH_STEPS } from './constants';
+import {
+  grainsRemaining,
+  grainsDestroyed,
+  destroyedRatio,
+  isRush,
+  rushStepsLeft,
+  type World,
+} from './world';
 
 export interface WorldView {
   readonly step: number;
@@ -25,6 +33,8 @@ export interface WorldView {
   readonly bestCombo: number;
   readonly hitCount: number;
   readonly rush: boolean;
+  /** ラッシュの残り具合（0〜1） */
+  readonly rushLeft: number;
   readonly cleared: boolean;
 }
 
@@ -80,6 +90,9 @@ export function createView(world: World): WorldView {
     },
     get rush() {
       return isRush(world);
+    },
+    get rushLeft() {
+      return Math.min(1, rushStepsLeft(world) / RUSH_STEPS);
     },
     get cleared() {
       return world.remainingUnits <= 0;

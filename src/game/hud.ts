@@ -14,9 +14,11 @@ function need<T extends HTMLElement>(id: string): T {
 export interface ResultStats {
   seconds: number;
   hits: number;
+  attempts: number;
   bestCombo: number;
   score: number;
   cleared: boolean;
+  newRecord: boolean;
 }
 
 export class Hud {
@@ -31,19 +33,29 @@ export class Hud {
   private readonly stats = need('stats');
   private readonly charge = need('charge');
   private readonly chargeFill = need('charge-fill');
+  private readonly rush = need('rush');
+  private readonly rushFill = need('rush-fill');
+  private readonly zoomLabel = need('zoom-label');
   private readonly replayBadge = need('replay-badge');
   private readonly titleScreen = need('title');
   private readonly resultScreen = need('result');
+  private readonly recordBadge = need('record-badge');
+  private readonly bestLine = need('best-line');
+  private readonly bestScore = need('best-score');
 
   private shownGrains = 0;
   private shownScore = 0;
   private lastCombo = -1;
+  private lastRush = -1;
+  private lastZoom = -1;
 
   reset(view: WorldView): void {
     this.shownGrains = view.grainsLeft;
     this.shownScore = 0;
     this.lastCombo = -1;
+    this.lastRush = -1;
     this.comboChip.classList.add('hidden');
+    this.rush.classList.add('hidden');
   }
 
   setVisible(value: boolean): void {
@@ -71,8 +83,25 @@ export class Hud {
     this.chargeFill.style.width = `${Math.min(100, ratio * 100)}%`;
   }
 
+  setZoom(magnification: number): void {
+    const rounded = Math.round(magnification * 10) / 10;
+    if (rounded === this.lastZoom) return;
+    this.lastZoom = rounded;
+    this.zoomLabel.textContent = `×${rounded.toFixed(1)}`;
+  }
+
   setStats(text: string): void {
     this.stats.textContent = text;
+  }
+
+  /** タイトル画面に自己ベストを出す */
+  setBest(score: number): void {
+    if (score <= 0) {
+      this.bestLine.classList.add('hidden');
+      return;
+    }
+    this.bestLine.classList.remove('hidden');
+    this.bestScore.textContent = score.toLocaleString('ja-JP');
   }
 
   update(view: WorldView, dt: number): void {
@@ -101,6 +130,13 @@ export class Hud {
       }
       this.lastCombo = combo;
     }
+
+    const rushLeft = Math.round(view.rushLeft * 100);
+    if (rushLeft !== this.lastRush) {
+      this.rush.classList.toggle('hidden', rushLeft <= 0);
+      this.rushFill.style.width = `${rushLeft}%`;
+      this.lastRush = rushLeft;
+    }
   }
 
   showResult(stats: ResultStats): void {
@@ -108,7 +144,10 @@ export class Hud {
     need('r-time').textContent = `${stats.seconds.toFixed(1)}秒`;
     need('r-hits').textContent = `${stats.hits.toLocaleString('ja-JP')}回`;
     need('r-combo').textContent = `${stats.bestCombo}`;
+    const rate = stats.attempts > 0 ? (stats.hits / stats.attempts) * 100 : 100;
+    need('r-accuracy').textContent = `${rate.toFixed(0)}%`;
     need('r-score').textContent = stats.score.toLocaleString('ja-JP');
+    this.recordBadge.classList.toggle('hidden', !stats.newRecord);
     this.resultScreen.classList.remove('hidden');
   }
 

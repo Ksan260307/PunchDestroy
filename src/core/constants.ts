@@ -31,9 +31,19 @@ export const STEP_MS = 1000 / STEPS_PER_SECOND;
 /** 連打が途切れたと見なすまでの猶予 */
 export const COMBO_WINDOW_STEPS = 50;
 /** ラッシュ（強化状態）に入る連打数 */
-export const RUSH_COMBO = 25;
+export const RUSH_COMBO = 30;
 /** ラッシュの持続 */
-export const RUSH_STEPS = 240;
+export const RUSH_STEPS = 110;
+/** ラッシュ中は殴る範囲がこの倍率になる */
+export const RUSH_RADIUS_SCALE = 3;
+/**
+ * ラッシュ中の威力（%）。
+ * 範囲が3倍＝体積が27倍になるので、深さと減衰でならして
+ * 「広く薄くえぐる」当たりにしている。
+ */
+export const RUSH_POWER_PERCENT = 130;
+/** ラッシュ中の減衰の強さ。中心は深く、ふちへ向かって浅くなる */
+export const RUSH_SHARPNESS = 3;
 
 /** マスの材質 */
 export const MATERIAL_EMPTY = 0;

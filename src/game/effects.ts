@@ -89,6 +89,8 @@ export class EffectSystem {
   rushGlow = 0;
 
   quality: QualityBudget = QUALITY_LEVELS[2];
+  /** 画面の揺れや明滅の強さ。端末の「視差効果を減らす」設定に合わせて下げる */
+  motionScale = 1;
 
   private comboText: FloatingText | null = null;
   private breakStep = -999;
@@ -297,9 +299,9 @@ export class EffectSystem {
     this.addGlow(wx, wy, wz, heavy ? 1.15 : 0.85);
 
     this.shakePower = Math.min(44, this.shakePower + (heavy ? 18 : 7) * (0.6 + strength));
-    this.zoom = Math.min(1.045, this.zoom + (heavy ? 0.02 : 0.01));
-    this.flash = Math.min(1, this.flash + (heavy ? 0.12 : 0.045));
-    this.freeze = Math.max(this.freeze, heavy ? 0.07 : 0.026);
+    this.zoom = Math.min(1.045, this.zoom + (heavy ? 0.02 : 0.01) * this.motionScale);
+    this.flash = Math.min(1, this.flash + (heavy ? 0.12 : 0.045) * this.motionScale);
+    this.freeze = Math.max(this.freeze, (heavy ? 0.07 : 0.026) * this.motionScale);
   }
 
   private randomDirection(): [number, number, number] {
@@ -448,8 +450,9 @@ export class EffectSystem {
     this.shakePower *= Math.exp(-7 * dt);
     if (this.shakePower < 0.05) this.shakePower = 0;
     const angle = this.rng.range(0, Math.PI * 2);
-    this.shakeX = Math.cos(angle) * this.shakePower;
-    this.shakeY = Math.sin(angle) * this.shakePower;
+    const shake = this.shakePower * this.motionScale;
+    this.shakeX = Math.cos(angle) * shake;
+    this.shakeY = Math.sin(angle) * shake;
 
     this.zoom += (1 - this.zoom) * Math.min(1, dt * 9);
     this.flash *= Math.exp(-7.5 * dt);

@@ -11,8 +11,8 @@ import { getStatueShape } from '../../core/shape';
 import { MAX_GLOW_POINTS } from '../effects';
 import type { RenderFrame, Renderer } from './types';
 
-const NEAR = '0.5';
-const FAR = '8.5';
+const NEAR = '0.05';
+const FAR = '10.0';
 
 const QUAD_VERT = `#version 300 es
 in vec2 aCorner;
@@ -119,9 +119,12 @@ void main() {
   float glen = length(grad);
   vec3 normal = glen > 0.0004 ? -grad / glen : -rd;
 
-  // 石らしいざらつきを面の向きに乗せる
+  // 石らしいざらつきを面の向きに乗せる。
+  // 粗い粒と細かい粒を重ねてあるので、寄るほど細かい粒立ちが見えてくる。
   vec3 cell = floor(p * 110.0);
   vec3 jitter = vec3(hash31(cell), hash31(cell + 11.3), hash31(cell + 27.7)) - 0.5;
+  vec3 fine = floor(p * 620.0);
+  jitter += (vec3(hash31(fine + 3.7), hash31(fine + 19.1), hash31(fine + 41.3)) - 0.5) * 0.75;
   normal = normalize(normal + jitter * 0.15);
 
   uint packed = uint(texture(uMeta, tc).r * 255.0 + 0.5);
@@ -143,6 +146,7 @@ void main() {
     albedo = mix(albedo, vec3(1.0, 0.68, 0.22), core * 0.9);
   }
   albedo *= 0.92 + 0.16 * hash31(floor(p * 150.0));
+  albedo *= 0.94 + 0.12 * hash31(floor(p * 900.0));
 
   vec3 key = normalize(vec3(-0.42, 0.78, 0.46));
   float ndl = max(dot(normal, key), 0.0);

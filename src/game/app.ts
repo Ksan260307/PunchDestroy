@@ -17,9 +17,10 @@ import { SoundKit } from './audio';
 import { OrbitCamera } from './camera';
 import { EffectSystem } from './effects';
 import { Hud } from './hud';
-import { PointerInput } from './input';
+import { KeyboardInput, PointerInput } from './input';
 import { PerformanceWatch } from './quality';
 import { createRenderer, OverlayLayer, type Renderer } from './render';
+import { loadBest, saveBest, type BestRecord } from './storage';
 
 type Mode = 'title' | 'play' | 'result' | 'replay';
 
@@ -37,16 +38,20 @@ export class Game {
   private readonly sound = new SoundKit();
   private readonly watch = new PerformanceWatch();
   private readonly input: PointerInput;
+  private readonly keys: KeyboardInput;
 
   private session: Session | null = null;
   private player: RecordPlayer | null = null;
   private view: WorldView | null = null;
   private record: SessionRecord | null = null;
+  private best: BestRecord = loadBest();
 
   private mode: Mode = 'title';
+  private seed = 0;
   private accumulator = 0;
   private lastFrame = 0;
   private elapsed = 0;
+  private attempts = 0;
   private width = 1;
   private height = 1;
   private appliedScale = 0;
@@ -71,10 +76,20 @@ export class Game {
         firstTouch: () => this.sound.unlock(),
       },
     );
+    this.keys = new KeyboardInput({
+      punchCenter: (heavy) => this.punch(this.width / 2, this.height / 2, heavy),
+      orbit: (dx, dy) => this.camera.orbit(dx, dy),
+      zoom: (factor) => this.camera.zoomBy(factor),
+      restart: () => this.restart(),
+      title: () => this.showTitle(),
+    });
 
+    this.applyMotionPreference();
+    this.hud.setBest(this.best.score);
     this.measure();
     window.addEventListener('resize', this.measure);
     window.addEventListener('orientationchange', this.measure);
+    document.addEventListener('visibilitychange', this.handleVisibility);
     this.frameHandle = requestAnimationFrame(this.frame);
   }
 
@@ -95,8 +110,9 @@ export class Game {
     this.camera.reset();
   }
 
-  /** 新しく始める */
+  /** 新しい石像で始める */
   begin(seed = Math.floor(Math.random() * 0x7fffffff)): void {
+    this.seed = seed;
     this.sound.unlock();
     this.session = new Session(seed);
     this.player = null;
@@ -105,6 +121,7 @@ export class Game {
     this.mode = 'play';
     this.accumulator = 0;
     this.elapsed = 0;
+    this.attempts = 0;
     this.fx.reset();
     this.camera.reset();
     this.hud.reset(this.view);
@@ -116,6 +133,12 @@ export class Game {
     this.watch.reset();
     this.renderer.invalidate();
     this.input.setEnabled(true);
+    this.keys.setEnabled(true);
+  }
+
+  /** いまの石像を最初からやり直す（同じ形・同じ削れ方の癖で再挑戦できる） */
+  restart(): void {
+    this.begin(this.seed || Math.floor(Math.random() * 0x7fffffff));
   }
 
   /** 直前のプレイを、記録から作り直して見返す */
@@ -134,6 +157,7 @@ export class Game {
     this.hud.setHint('記録から作り直しています（なぞると見る角度を変えられます）');
     this.renderer.invalidate();
     this.input.setEnabled(true);
+    this.keys.setEnabled(false);
   }
 
   showTitle(): void {
@@ -142,16 +166,35 @@ export class Game {
     this.hud.hideResult();
     this.hud.setVisible(false);
     this.hud.showReplayBadge(false);
+    this.hud.setBest(this.best.score);
     this.input.setEnabled(false);
+    this.keys.setEnabled(false);
   }
 
   dispose(): void {
     cancelAnimationFrame(this.frameHandle);
     window.removeEventListener('resize', this.measure);
     window.removeEventListener('orientationchange', this.measure);
+    document.removeEventListener('visibilitychange', this.handleVisibility);
     this.input.dispose();
+    this.keys.dispose();
     this.renderer.dispose();
   }
+
+  private applyMotionPreference(): void {
+    if (typeof window.matchMedia !== 'function') return;
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const apply = () => {
+      this.fx.motionScale = query.matches ? 0.25 : 1;
+    };
+    apply();
+    query.addEventListener?.('change', apply);
+  }
+
+  private handleVisibility = (): void => {
+    // 戻ってきたときに時間が飛ばないよう、計測をやり直す
+    if (!document.hidden) this.lastFrame = 0;
+  };
 
   private measure = (): void => {
     this.width = this.stage.clientWidth || window.innerWidth;
@@ -170,6 +213,7 @@ export class Game {
 
   private punch(sx: number, sy: number, heavy: boolean): void {
     if (this.mode !== 'play' || !this.session) return;
+    this.attempts++;
     const ray = this.camera.rayFrom(sx, sy, this.width, this.height);
     const hit = traceSurface(
       this.session.world,
@@ -181,7 +225,10 @@ export class Game {
       ray.dz,
       heavy ? SMASH_BITE : JAB_BITE,
     );
-    if (!hit) return;
+    if (!hit) {
+      this.sound.whiff();
+      return;
+    }
     this.session.queueHit(hit.x, hit.y, hit.z, heavy ? HIT_SMASH : HIT_JAB);
     this.camera.kick(
       heavy ? 0.02 : 0.008,
@@ -193,14 +240,18 @@ export class Game {
   private frame = (now: number): void => {
     this.frameHandle = requestAnimationFrame(this.frame);
     if (this.lastFrame === 0) this.lastFrame = now;
-    const dt = Math.min(0.05, (now - this.lastFrame) / 1000);
+    // 時計が戻ることがあっても進行が巻き戻らないよう、下も上も止める
+    const dt = Math.max(0, Math.min(0.05, (now - this.lastFrame) / 1000));
     this.lastFrame = now;
 
     this.watch.sample(dt);
     this.fx.quality = this.watch.budget;
     this.applyScale();
 
-    if (this.mode === 'play') this.input.update(now);
+    if (this.mode === 'play') {
+      this.input.update(now);
+      this.keys.update(dt);
+    }
 
     if (this.fx.freeze > 0) {
       this.fx.freeze = Math.max(0, this.fx.freeze - dt);
@@ -229,6 +280,7 @@ export class Game {
     if (view) {
       this.hud.update(view, dt);
       this.hud.setCharge(this.mode === 'play' ? this.input.charge : 0);
+      this.hud.setZoom(this.camera.magnification);
       this.renderer.render({
         view,
         fx: this.fx,
@@ -290,16 +342,24 @@ export class Game {
     this.record = this.session.toRecord();
     this.mode = 'result';
     this.input.setEnabled(false);
+    this.keys.setEnabled(false);
+
     const view = this.view;
-    window.setTimeout(() => {
-      this.hud.showResult({
-        seconds: this.elapsed,
-        hits: view.hitCount,
-        bestCombo: view.bestCombo,
-        score: view.score,
-        cleared: true,
-      });
-    }, 900);
+    const newRecord = view.score > this.best.score;
+    if (newRecord) {
+      this.best = { score: view.score, seconds: this.elapsed, combo: view.bestCombo };
+      saveBest(this.best);
+    }
+    const stats = {
+      seconds: this.elapsed,
+      hits: view.hitCount,
+      attempts: this.attempts,
+      bestCombo: view.bestCombo,
+      score: view.score,
+      cleared: true,
+      newRecord,
+    };
+    window.setTimeout(() => this.hud.showResult(stats), 900);
   }
 
   private endReplay(): void {
@@ -311,9 +371,11 @@ export class Game {
       this.hud.showResult({
         seconds: this.elapsed,
         hits: view.hitCount,
+        attempts: this.attempts,
         bestCombo: view.bestCombo,
         score: view.score,
         cleared: view.cleared,
+        newRecord: false,
       });
     }
   }

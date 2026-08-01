@@ -162,6 +162,12 @@ export function isRush(world: World): boolean {
   return world.rushUntilStep > world.step;
 }
 
+/** ラッシュの残り（刻み数）。切れていれば 0 */
+export function rushStepsLeft(world: World): number {
+  const left = world.rushUntilStep - world.step;
+  return left > 0 ? left : 0;
+}
+
 export function isCleared(world: World): boolean {
   return world.remainingUnits <= 0;
 }

@@ -29,6 +29,9 @@ import {
   JAB_POWER,
   JAB_RADIUS,
   RUSH_COMBO,
+  RUSH_POWER_PERCENT,
+  RUSH_RADIUS_SCALE,
+  RUSH_SHARPNESS,
   RUSH_STEPS,
   SMASH_POWER,
   SMASH_RADIUS,
@@ -83,6 +86,8 @@ export interface StepReport {
 export interface HitParams {
   radius: number;
   power: number;
+  /** 中心から外へ向かう減り方を何段きつくするか（中心は深く、外は浅くなる） */
+  sharpness: number;
 }
 
 /** 打撃の強さは、そのときの状態（連打数・強化中か）だけから決まる */
@@ -92,11 +97,13 @@ export function hitParams(world: World, kind: number): HitParams {
   let power = kind === HIT_SMASH ? SMASH_POWER : JAB_POWER;
   radius += (boost / 24) | 0;
   power += boost * 4;
+  let sharpness = 0;
   if (isRush(world)) {
-    radius = ((radius * 5) / 4) | 0;
-    power = ((power * 8) / 5) | 0;
+    radius *= RUSH_RADIUS_SCALE;
+    power = ((power * RUSH_POWER_PERCENT) / 100) | 0;
+    sharpness = RUSH_SHARPNESS;
   }
-  return { radius, power };
+  return { radius, power, sharpness };
 }
 
 function widen(
@@ -138,7 +145,7 @@ function clampCoord(value: number): number {
  * 同じ回に来た打撃の並び順を入れ替えても結果は変わらない。
  */
 export function applyHit(world: World, hit: Hit, report: StepReport): HitFeedback {
-  const { radius, power } = hitParams(world, hit.kind);
+  const { radius, power, sharpness } = hitParams(world, hit.kind);
   const cx = hit.x;
   const cy = hit.y;
   const cz = hit.z;
@@ -178,6 +185,7 @@ export function applyHit(world: World, hit: Hit, report: StepReport): HitFeedbac
 
         const falloff = r2 - d2;
         let amount = Math.floor((power * falloff * falloff) / r4);
+        for (let s = 0; s < sharpness; s++) amount = Math.floor((amount * falloff) / r2);
         if (amount <= 0) continue;
         // 削れ方のムラ（最大で +12% ほど）
         amount += (amount * (hash3(salt, key, index) & 63)) >> 9;

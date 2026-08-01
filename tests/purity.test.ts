@@ -72,14 +72,22 @@ describe('進行を決める側の独立性', () => {
 
 describe('数の扱い', () => {
   it('残り量も削り量も整数のまま扱える範囲に収まっている', async () => {
-    const { MAX_DENSITY, SMASH_POWER, JAB_RADIUS, SMASH_RADIUS, VOXEL_COUNT } = await import(
-      '../src/core/constants'
-    );
-    const maxRadius = Math.round((SMASH_RADIUS * 3) / 2) + 5;
-    const maxPower = SMASH_POWER * 2 + 60 * 10;
+    const {
+      MAX_DENSITY,
+      SMASH_POWER,
+      JAB_RADIUS,
+      SMASH_RADIUS,
+      VOXEL_COUNT,
+      RUSH_RADIUS_SCALE,
+      RUSH_POWER_PERCENT,
+    } = await import('../src/core/constants');
+    const maxRadius = (SMASH_RADIUS + 60 / 24) * RUSH_RADIUS_SCALE;
+    const maxPower = Math.max(1, RUSH_POWER_PERCENT / 100) * (SMASH_POWER + 60 * 4);
     const r2 = maxRadius * maxRadius;
     // 削り量の計算の途中で出る最大値
     expect(maxPower * r2 * r2).toBeLessThan(Number.MAX_SAFE_INTEGER);
+    // 減衰を重ねる途中の掛け算も安全な範囲に収まる
+    expect(maxPower * r2).toBeLessThan(Number.MAX_SAFE_INTEGER);
     // 全部詰まっていても合計が安全に扱える
     expect(VOXEL_COUNT * MAX_DENSITY).toBeLessThan(Number.MAX_SAFE_INTEGER);
     expect(MAX_DENSITY).toBe(255);

@@ -180,7 +180,10 @@ export class PointerInput {
   private handleWheel = (event: WheelEvent): void => {
     if (!this.enabled) return;
     event.preventDefault();
-    this.handlers.zoom(event.deltaY > 0 ? 0.92 : 1.08);
+    // トラックパッドのつまむ操作は ctrl 付きで来る。細かく効かせたいので刻みは小さめ
+    const strength = event.ctrlKey ? 0.006 : 0.0008;
+    const amount = Math.max(-120, Math.min(120, event.deltaY));
+    this.handlers.zoom(Math.exp(-amount * strength));
   };
 
   private currentPinch(): number {
@@ -188,4 +191,80 @@ export class PointerInput {
     if (list.length < 2) return 0;
     return Math.hypot(list[0].x - list[1].x, list[0].y - list[1].y);
   }
+}
+
+export interface KeyHandlers {
+  punchCenter: (heavy: boolean) => void;
+  orbit: (dx: number, dy: number) => void;
+  zoom: (factor: number) => void;
+  restart: () => void;
+  title: () => void;
+}
+
+/** パソコンでの操作。押しっぱなしにも対応する */
+export class KeyboardInput {
+  private readonly held = new Set<string>();
+  private enabled = false;
+
+  constructor(private readonly handlers: KeyHandlers) {
+    window.addEventListener('keydown', this.handleDown);
+    window.addEventListener('keyup', this.handleUp);
+    window.addEventListener('blur', this.clear);
+  }
+
+  setEnabled(value: boolean): void {
+    this.enabled = value;
+    this.held.clear();
+  }
+
+  /** 毎フレーム呼ぶ。押しっぱなしの回転と拡大を進める */
+  update(dt: number): void {
+    if (!this.enabled) return;
+    const speed = 1.8 * dt;
+    let dx = 0;
+    let dy = 0;
+    if (this.held.has('ArrowLeft')) dx -= speed;
+    if (this.held.has('ArrowRight')) dx += speed;
+    if (this.held.has('ArrowUp')) dy -= speed;
+    if (this.held.has('ArrowDown')) dy += speed;
+    if (dx !== 0 || dy !== 0) this.handlers.orbit(dx, dy);
+
+    let zoom = 0;
+    if (this.held.has('Equal') || this.held.has('NumpadAdd')) zoom += 1;
+    if (this.held.has('Minus') || this.held.has('NumpadSubtract')) zoom -= 1;
+    if (zoom !== 0) this.handlers.zoom(Math.exp(zoom * dt * 1.6));
+  }
+
+  dispose(): void {
+    window.removeEventListener('keydown', this.handleDown);
+    window.removeEventListener('keyup', this.handleUp);
+    window.removeEventListener('blur', this.clear);
+  }
+
+  private clear = (): void => {
+    this.held.clear();
+  };
+
+  private handleDown = (event: KeyboardEvent): void => {
+    if (event.repeat) return;
+    if (event.code === 'Escape') {
+      this.handlers.title();
+      return;
+    }
+    if (!this.enabled) return;
+    if (event.code === 'Space' || event.code === 'Enter') {
+      event.preventDefault();
+      this.handlers.punchCenter(event.shiftKey);
+      return;
+    }
+    if (event.code === 'KeyR') {
+      this.handlers.restart();
+      return;
+    }
+    this.held.add(event.code);
+  };
+
+  private handleUp = (event: KeyboardEvent): void => {
+    this.held.delete(event.code);
+  };
 }

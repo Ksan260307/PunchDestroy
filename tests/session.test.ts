@@ -8,6 +8,7 @@ import {
   decodeRecord,
   encodeRecord,
   ensureReplayable,
+  recordDigest,
   replay,
   replayFromSnapshot,
 } from '../src/core/session';
@@ -79,7 +80,7 @@ describe('記録と再現', () => {
   it('記録の中身は操作の並びだけで、状態を持たない', () => {
     const session = shortPlay(5);
     const record = session.toRecord();
-    expect(Object.keys(record).sort()).toEqual(['hits', 'seed', 'signature', 'steps']);
+    expect(Object.keys(record).sort()).toEqual(['digest', 'hits', 'seed', 'signature', 'steps']);
     expect(record.hits.length % 5).toBe(0);
     expect(record.hits.length / 5).toBe(session.hitLogLength);
   });
@@ -107,6 +108,34 @@ describe('再現できない記録は受け付けない', () => {
   it('壊れた JSON は読み込まない', () => {
     expect(() => decodeRecord('{"seed":1}')).toThrow();
     expect(() => decodeRecord('[]')).toThrow();
+    const record = shortPlay(3).toRecord();
+    const { digest, ...withoutDigest } = record;
+    expect(digest).toMatch(/^[0-9a-f]{8}$/);
+    expect(() => decodeRecord(JSON.stringify(withoutDigest))).toThrow();
+  });
+
+  it('操作の並びが書き換わった記録は拒否する', () => {
+    const record = shortPlay(3).toRecord();
+    const hits = record.hits.slice();
+    hits[1] = (hits[1] + 5) % GRID;
+    expect(() => replay({ ...record, hits })).toThrow(ReplayRejected);
+  });
+
+  it('操作が欠けた記録も拒否する', () => {
+    const record = shortPlay(3).toRecord();
+    expect(() => replay({ ...record, hits: record.hits.slice(0, -5) })).toThrow(ReplayRejected);
+    expect(() => replay({ ...record, hits: record.hits.slice(0, -2) })).toThrow(ReplayRejected);
+  });
+
+  it('回数だけ書き換えた記録も拒否する', () => {
+    const record = shortPlay(3).toRecord();
+    expect(() => replay({ ...record, steps: record.steps + 1 })).toThrow(ReplayRejected);
+    expect(() => replay({ ...record, seed: record.seed + 1 })).toThrow(ReplayRejected);
+  });
+
+  it('中身が同じなら指紋も同じ', () => {
+    const record = shortPlay(3).toRecord();
+    expect(recordDigest(record.seed, record.steps, record.hits)).toBe(record.digest);
   });
 
   it('いまの記録は当然受け付ける', () => {

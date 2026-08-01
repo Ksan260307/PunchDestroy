@@ -44,11 +44,19 @@
           </div>
         </header>
 
+        <div id="rush" class="rush hidden">
+          <span class="rush-label">ラッシュ</span>
+          <div class="rush-track"><i id="rush-fill"></i></div>
+        </div>
+
         <footer class="bar bottom">
           <span id="hint" class="hint">タップで殴る／なぞって回す／長押しで渾身の一撃</span>
           <div class="tools">
+            <span id="zoom-label" class="zoom-label">×1.0</span>
             <button id="mute" type="button" class="tool" aria-label="音を切り替える">♪</button>
-            <button id="recenter" type="button" class="tool" aria-label="向きを戻す">⟲</button>
+            <button id="recenter" type="button" class="tool" aria-label="向きと拡大を戻す">⟲</button>
+            <button id="restart" type="button" class="tool" aria-label="やり直す">↺</button>
+            <button id="home" type="button" class="tool" aria-label="タイトルに戻る">✕</button>
             <span id="stats" class="stats"></span>
           </div>
         </footer>
@@ -66,22 +74,29 @@
             <li><b>タップ</b>で殴る</li>
             <li><b>なぞる</b>と回って好きな角度から狙える</li>
             <li><b>長押し</b>で渾身の一撃／<b>2本指</b>で寄り引き</li>
+            <li class="pc-only">
+              パソコン：<b>方向キー</b>で回す・<b>+/-</b>で寄り引き・<b>Space</b>で殴る・<b>R</b>でやり直す
+            </li>
           </ul>
+          <p id="best-line" class="best hidden">自己ベスト <b id="best-score">0</b></p>
         </div>
       </div>
 
       <div id="result" class="screen hidden">
         <div class="screen-inner">
           <h2 id="result-title">完全破壊！</h2>
+          <p id="record-badge" class="record-badge hidden">自己ベスト更新！</p>
           <dl class="result-stats">
             <div><dt>かかった時間</dt><dd id="r-time">-</dd></div>
             <div><dt>殴った回数</dt><dd id="r-hits">-</dd></div>
             <div><dt>最大コンボ</dt><dd id="r-combo">-</dd></div>
-            <div><dt>スコア</dt><dd id="r-score">-</dd></div>
+            <div><dt>命中率</dt><dd id="r-accuracy">-</dd></div>
+            <div class="wide"><dt>スコア</dt><dd id="r-score">-</dd></div>
           </dl>
           <div class="buttons">
             <button id="again" type="button" class="primary">もう一度</button>
             <button id="watch" type="button" class="ghost">今のプレイを見返す</button>
+            <button id="back" type="button" class="ghost">タイトルへ</button>
           </div>
         </div>
       </div>
