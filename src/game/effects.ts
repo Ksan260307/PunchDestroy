@@ -97,7 +97,6 @@ export class EffectSystem {
   private comboText: FloatingText | null = null;
   private breakStep = -999;
   private breakCount = 0;
-  private oraStep = -999;
 
   constructor(capacity = 3600) {
     this.capacity = capacity;
@@ -123,7 +122,6 @@ export class EffectSystem {
     this.comboText = null;
     this.breakStep = -999;
     this.breakCount = 0;
-    this.oraStep = -999;
     this.glowPoints.fill(0);
     this.glowCursor = 0;
     this.shakeX = 0;
@@ -193,21 +191,8 @@ export class EffectSystem {
     }
 
     if (report.barrageStarted) {
-      this.pushScreenText(0.5, 0.25, 'オラオラオラッ！', 52, '#e0245e');
       this.flash = Math.min(1, this.flash + 0.2 * this.motionScale);
       this.shakePower = Math.max(this.shakePower, 20);
-    }
-    if (report.barrage && report.hits.length > 0 && report.step - this.oraStep >= 5) {
-      const hit = report.hits[0];
-      this.oraStep = report.step;
-      this.pushWorldText(
-        toUnit(hit.x) + this.rng.range(-0.12, 0.12),
-        toUnit(hit.y) + this.rng.range(0.06, 0.22),
-        toUnit(hit.z),
-        'オラッ',
-        26,
-        '#e0245e',
-      );
     }
 
     if (report.collapsing.length > 0) {
