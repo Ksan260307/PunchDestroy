@@ -100,6 +100,16 @@ export class PointerInput {
     event.preventDefault();
   };
 
+  /**
+   * ボタンや案内画面の上で始まった操作は、こちらでは扱わない。
+   * ここで捕まえてしまうと、押した先のボタンが反応しなくなる。
+   */
+  private onWidget(event: PointerEvent): boolean {
+    const target = event.target;
+    if (!(target instanceof Element)) return false;
+    return target.closest('button, a, input, .screen, [data-ui]') !== null;
+  }
+
   private local(event: PointerEvent): { x: number; y: number } {
     const rect = this.element.getBoundingClientRect();
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
@@ -111,8 +121,9 @@ export class PointerInput {
   }
 
   private handleDown = (event: PointerEvent): void => {
+    // ボタンを押したときも音を出せるようにしておく（iPad で最初に必要）
     this.handlers.firstTouch();
-    if (!this.enabled) return;
+    if (!this.enabled || this.onWidget(event)) return;
     event.preventDefault();
     const point = this.local(event);
     this.touches.set(event.pointerId, {

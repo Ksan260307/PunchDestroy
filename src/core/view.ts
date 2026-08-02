@@ -10,6 +10,7 @@ import {
   grainsRemaining,
   grainsDestroyed,
   destroyedRatio,
+  finaleProgress,
   isRush,
   rushStepsLeft,
   type World,
@@ -35,6 +36,10 @@ export interface WorldView {
   readonly rush: boolean;
   /** ラッシュの残り具合（0〜1） */
   readonly rushLeft: number;
+  /** 総崩れが始まっているか */
+  readonly finale: boolean;
+  /** 崩れ出すまでの張りつめ具合（0〜1）。1 になると崩れ始める */
+  readonly finaleTension: number;
   readonly cleared: boolean;
 }
 
@@ -93,6 +98,12 @@ export function createView(world: World): WorldView {
     },
     get rushLeft() {
       return Math.min(1, rushStepsLeft(world) / RUSH_STEPS);
+    },
+    get finale() {
+      return world.finaleStep >= 0;
+    },
+    get finaleTension() {
+      return finaleProgress(world);
     },
     get cleared() {
       return world.remainingUnits <= 0;

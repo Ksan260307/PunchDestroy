@@ -83,6 +83,8 @@ export class EffectSystem {
   shakeX = 0;
   shakeY = 0;
   shakePower = 0;
+  /** 総崩れ直前の、絶えず続く震え（0〜1） */
+  tremor = 0;
   zoom = 1;
   flash = 0;
   freeze = 0;
@@ -125,6 +127,7 @@ export class EffectSystem {
     this.shakeX = 0;
     this.shakeY = 0;
     this.shakePower = 0;
+    this.tremor = 0;
     this.zoom = 1;
     this.flash = 0;
     this.freeze = 0;
@@ -212,6 +215,15 @@ export class EffectSystem {
         this.breakStep = report.step;
         this.breakCount = 0;
       }
+    }
+
+    if (report.finaleStarted) {
+      this.pushScreenText(0.5, 0.3, '崩れる……！', 50, '#c92a3f');
+      this.tremor = Math.max(this.tremor, 0.22);
+    }
+    if (report.finaleShaking) {
+      this.tremor = Math.min(1, this.tremor + 0.014);
+      this.shakeDust(view);
     }
 
     if (report.rushStarted) {
@@ -339,6 +351,34 @@ export class EffectSystem {
     }
   }
 
+  /** 震えている間、まだ残っている区画からぱらぱらと粉が落ちる */
+  private shakeDust(view: WorldView): void {
+    const count = Math.round((1 + this.tremor * 5) * this.quality.burstScale);
+    const blocks = view.blockRemaining;
+    for (let i = 0; i < count; i++) {
+      const block = (this.rng.next() * blocks.length) | 0;
+      if (blocks[block] <= 0) continue;
+      const bounds = blockBounds(block);
+      const x = toUnit(this.rng.range(bounds.x0, bounds.x1 + 1));
+      const y = toUnit(this.rng.range(bounds.y0, bounds.y1 + 1));
+      const z = toUnit(this.rng.range(bounds.z0, bounds.z1 + 1));
+      this.spawn(
+        x,
+        y,
+        z,
+        this.rng.range(-0.06, 0.06),
+        this.rng.range(-0.3, -0.05),
+        this.rng.range(-0.06, 0.06),
+        this.rng.range(0.004, 0.012),
+        this.rng.range(0.5, 1.2),
+        0.66,
+        0.64,
+        0.66,
+        0,
+      );
+    }
+  }
+
   private addGlow(x: number, y: number, z: number, strength: number): void {
     const slot = this.glowCursor % MAX_GLOW_POINTS;
     this.glowCursor++;
@@ -449,8 +489,12 @@ export class EffectSystem {
 
     this.shakePower *= Math.exp(-7 * dt);
     if (this.shakePower < 0.05) this.shakePower = 0;
+    this.tremor *= Math.exp(-1.1 * dt);
+    if (this.tremor < 0.004) this.tremor = 0;
     const angle = this.rng.range(0, Math.PI * 2);
-    const shake = this.shakePower * this.motionScale;
+    // 震えは細かく速い揺れ。打撃の揺れとは別に足す
+    const buzz = this.tremor * this.tremor * 16;
+    const shake = (this.shakePower + buzz) * this.motionScale;
     this.shakeX = Math.cos(angle) * shake;
     this.shakeY = Math.sin(angle) * shake;
 

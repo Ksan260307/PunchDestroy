@@ -24,6 +24,8 @@ import {
   COMBO_WINDOW_STEPS,
   CRUMB_DENSITY,
   FINALE_PERCENT,
+  FINALE_SHAKE_STEPS,
+  FINALE_WAVE_STEPS,
   GRID,
   HIT_SMASH,
   JAB_POWER,
@@ -69,6 +71,10 @@ export interface StepReport {
   comboBroken: boolean;
   rush: boolean;
   rushStarted: boolean;
+  /** 総崩れの合図が出た回 */
+  finaleStarted: boolean;
+  /** 崩れる前に震えている最中 */
+  finaleShaking: boolean;
   cleared: boolean;
   /** この回に崩れ始めた区画 */
   collapsing: number[];
@@ -257,6 +263,8 @@ export function advance(world: World, hits: readonly Hit[]): StepReport {
   report.scoreGain = 0;
   report.comboBroken = false;
   report.rushStarted = false;
+  report.finaleStarted = false;
+  report.finaleShaking = false;
   report.cleared = false;
   report.dirtyValid = false;
 
@@ -274,7 +282,7 @@ export function advance(world: World, hits: readonly Hit[]): StepReport {
   updateBlocks(world, report);
   updateCombo(world, hits.length, report);
   updateScore(world, report);
-  checkFinale(world);
+  checkFinale(world, report);
 
   if (world.remainingUnits <= 0 && world.clearedStep < 0) {
     world.clearedStep = world.step;
@@ -349,14 +357,40 @@ function updateScore(world: World, report: StepReport): void {
   report.scoreGain = gain;
 }
 
-/** 残りわずかになったら全部まとめて崩す（最後の詰めを退屈にしない） */
-function checkFinale(world: World): void {
+/**
+ * 残りわずかになったら総崩れに入る（最後の詰めを退屈にしない）。
+ *
+ * いきなり全部消すと唐突なので、まず地響きとともにしばらく震え、
+ * そのあと下の段から順に崩れていく。震えの長さも崩れる順も
+ * 状態だけから決まるので、見返し再生でも同じように崩れる。
+ */
+function checkFinale(world: World, report: StepReport): void {
   if (world.remainingUnits <= 0) return;
-  if (world.remainingUnits * 100 >= world.totalUnits * FINALE_PERCENT) return;
+
+  if (world.finaleStep < 0) {
+    if (world.remainingUnits * 100 >= world.totalUnits * FINALE_PERCENT) return;
+    world.finaleStep = world.step;
+    report.finaleStarted = true;
+    report.finaleShaking = true;
+    return;
+  }
+
+  const elapsed = world.step - world.finaleStep;
+  if (elapsed < FINALE_SHAKE_STEPS) {
+    report.finaleShaking = true;
+    return;
+  }
+
+  const wave = elapsed - FINALE_SHAKE_STEPS;
   for (let block = 0; block < BLOCK_COUNT; block++) {
     const state = world.blockState[block];
     if (state === BLOCK_GONE || state === BLOCK_COLLAPSING) continue;
     if (world.blockRemaining[block] <= 0) continue;
+    // 下の段ほど早く崩れる。同じ段の中は少しばらけさせる
+    const level = ((block / BLOCKS) | 0) % BLOCKS;
+    const delay = level * FINALE_WAVE_STEPS + (hash2(block, 0x6d3f) & 3);
+    if (wave < delay) continue;
     world.blockState[block] = BLOCK_COLLAPSING;
+    report.collapsing.push(block);
   }
 }

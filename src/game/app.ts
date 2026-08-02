@@ -8,7 +8,7 @@
  * 当たったマス座標として記録され、以後の進行はカメラに左右されない。
  */
 
-import { HIT_JAB, HIT_SMASH, STEP_MS } from '../core/constants';
+import { FINALE_SHAKE_STEPS, HIT_JAB, HIT_SMASH, STEPS_PER_SECOND, STEP_MS } from '../core/constants';
 import type { StepReport } from '../core/rules';
 import { RecordPlayer, Session, type SessionRecord } from '../core/session';
 import { traceSurface } from '../core/trace';
@@ -57,6 +57,8 @@ export class Game {
   private appliedScale = 0;
   private lastBuzz = 0;
   private frameHandle = 0;
+  private pendingAction: 'restart' | 'home' | null = null;
+  private pendingUntil = 0;
 
   constructor(
     private readonly stage: HTMLElement,
@@ -80,8 +82,8 @@ export class Game {
       punchCenter: (heavy) => this.punch(this.width / 2, this.height / 2, heavy),
       orbit: (dx, dy) => this.camera.orbit(dx, dy),
       zoom: (factor) => this.camera.zoomBy(factor),
-      restart: () => this.restart(),
-      title: () => this.showTitle(),
+      restart: () => this.requestRestart(),
+      title: () => this.requestExit(),
     });
 
     this.applyMotionPreference();
@@ -90,6 +92,8 @@ export class Game {
     window.addEventListener('resize', this.measure);
     window.addEventListener('orientationchange', this.measure);
     document.addEventListener('visibilitychange', this.handleVisibility);
+    window.addEventListener('pageshow', this.handleRestore);
+    window.addEventListener('focus', this.handleRestore);
     this.frameHandle = requestAnimationFrame(this.frame);
   }
 
@@ -134,11 +138,49 @@ export class Game {
     this.renderer.invalidate();
     this.input.setEnabled(true);
     this.keys.setEnabled(true);
+    this.pendingAction = null;
   }
 
   /** いまの石像を最初からやり直す（同じ形・同じ削れ方の癖で再挑戦できる） */
   restart(): void {
     this.begin(this.seed || Math.floor(Math.random() * 0x7fffffff));
+  }
+
+  /**
+   * やり直し・終了は、進めたぶんが消えてしまうので一度だけ聞き返す。
+   * 触り間違いで積み上げたものが消えないようにするため。
+   */
+  requestRestart(): void {
+    if (this.confirmNeeded('restart')) return;
+    this.restart();
+  }
+
+  requestExit(): void {
+    if (this.confirmNeeded('home')) return;
+    this.showTitle();
+  }
+
+  private confirmNeeded(action: 'restart' | 'home'): boolean {
+    if (this.mode !== 'play' || !this.view) return false;
+    // まだほとんど壊していないなら、聞き返さずそのまま実行する
+    if (this.view.destroyed < 0.01) return false;
+    const now = performance.now();
+    if (this.pendingAction === action && now < this.pendingUntil) {
+      this.pendingAction = null;
+      return false;
+    }
+    this.pendingAction = action;
+    this.pendingUntil = now + 3000;
+    this.hud.setHint(
+      action === 'restart' ? 'もう一度押すと最初からやり直します' : 'もう一度押すとタイトルに戻ります',
+    );
+    return true;
+  }
+
+  private clearPending(): void {
+    if (!this.pendingAction) return;
+    this.pendingAction = null;
+    this.hud.setHint('タップで殴る／なぞって回す／長押しで渾身の一撃');
   }
 
   /** 直前のプレイを、記録から作り直して見返す */
@@ -169,6 +211,7 @@ export class Game {
     this.hud.setBest(this.best.score);
     this.input.setEnabled(false);
     this.keys.setEnabled(false);
+    this.pendingAction = null;
   }
 
   dispose(): void {
@@ -176,6 +219,8 @@ export class Game {
     window.removeEventListener('resize', this.measure);
     window.removeEventListener('orientationchange', this.measure);
     document.removeEventListener('visibilitychange', this.handleVisibility);
+    window.removeEventListener('pageshow', this.handleRestore);
+    window.removeEventListener('focus', this.handleRestore);
     this.input.dispose();
     this.keys.dispose();
     this.renderer.dispose();
@@ -192,8 +237,16 @@ export class Game {
   }
 
   private handleVisibility = (): void => {
+    if (document.hidden) return;
     // 戻ってきたときに時間が飛ばないよう、計測をやり直す
-    if (!document.hidden) this.lastFrame = 0;
+    this.lastFrame = 0;
+    // 画面を閉じている間に音の仕組みが止められていることがある
+    this.sound.resume();
+  };
+
+  private handleRestore = (): void => {
+    this.lastFrame = 0;
+    this.sound.resume();
   };
 
   private measure = (): void => {
@@ -213,6 +266,7 @@ export class Game {
 
   private punch(sx: number, sy: number, heavy: boolean): void {
     if (this.mode !== 'play' || !this.session) return;
+    this.clearPending();
     this.attempts++;
     const ray = this.camera.rayFrom(sx, sy, this.width, this.height);
     const hit = traceSurface(
@@ -322,6 +376,11 @@ export class Game {
       this.buzz(38);
     }
     if (report.rushStarted) this.sound.rush();
+    if (report.finaleStarted) {
+      this.sound.rumble(FINALE_SHAKE_STEPS / STEPS_PER_SECOND);
+      this.hud.setHint('石像が震えている……！');
+      this.buzz(200);
+    }
     if (report.cleared) {
       this.sound.clear();
       this.buzz(120);

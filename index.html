@@ -53,10 +53,22 @@
           <span id="hint" class="hint">タップで殴る／なぞって回す／長押しで渾身の一撃</span>
           <div class="tools">
             <span id="zoom-label" class="zoom-label">×1.0</span>
-            <button id="mute" type="button" class="tool" aria-label="音を切り替える">♪</button>
-            <button id="recenter" type="button" class="tool" aria-label="向きと拡大を戻す">⟲</button>
-            <button id="restart" type="button" class="tool" aria-label="やり直す">↺</button>
-            <button id="home" type="button" class="tool" aria-label="タイトルに戻る">✕</button>
+            <span class="tool-slot">
+              <span class="tool-label">音</span>
+              <button id="mute" type="button" class="tool" aria-label="音を切り替える">♪</button>
+            </span>
+            <span class="tool-slot">
+              <span class="tool-label">視点</span>
+              <button id="recenter" type="button" class="tool" aria-label="向きと拡大を戻す">⟲</button>
+            </span>
+            <span class="tool-slot">
+              <span class="tool-label">やり直す</span>
+              <button id="restart" type="button" class="tool" aria-label="やり直す">↺</button>
+            </span>
+            <span class="tool-slot">
+              <span class="tool-label">とじる</span>
+              <button id="home" type="button" class="tool" aria-label="タイトルに戻る">✕</button>
+            </span>
             <span id="stats" class="stats"></span>
           </div>
         </footer>

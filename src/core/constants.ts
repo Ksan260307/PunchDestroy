@@ -61,6 +61,10 @@ export const BLOCK_GONE = 3;
 export const COLLAPSE_PERCENT = 14;
 /** 全体の残りが何%を切ったら総崩れに入るか */
 export const FINALE_PERCENT = 10;
+/** 総崩れの前に、地響きとともに震える長さ */
+export const FINALE_SHAKE_STEPS = 78;
+/** 崩れが下から上へ広がる速さ（区画1段ぶんの遅れ） */
+export const FINALE_WAVE_STEPS = 5;
 
 /** 打撃の種類 */
 export const HIT_JAB = 0;

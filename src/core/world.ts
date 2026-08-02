@@ -14,6 +14,7 @@ import {
   BLOCK_COUNT,
   BLOCK_INTACT,
   BLOCK_SIZE,
+  FINALE_SHAKE_STEPS,
   GRID,
   GRID_AREA,
   TOTAL_GRAINS,
@@ -66,6 +67,8 @@ export interface World {
   hitCount: number;
   lastHitStep: number;
   rushUntilStep: number;
+  /** 総崩れが始まった回。まだなら -1 */
+  finaleStep: number;
   clearedStep: number;
 
   readonly report: StepReport;
@@ -83,6 +86,7 @@ export interface WorldSnapshot {
   hitCount: number;
   lastHitStep: number;
   rushUntilStep: number;
+  finaleStep: number;
   clearedStep: number;
 }
 
@@ -115,6 +119,7 @@ export function createWorld(seed: number, shape: StatueShape = getStatueShape())
     hitCount: 0,
     lastHitStep: -9999,
     rushUntilStep: 0,
+    finaleStep: -1,
     clearedStep: -1,
     report: createReport(),
   };
@@ -130,6 +135,8 @@ function createReport(): StepReport {
     comboBroken: false,
     rush: false,
     rushStarted: false,
+    finaleStarted: false,
+    finaleShaking: false,
     cleared: false,
     collapsing: [],
     vanished: [],
@@ -168,6 +175,14 @@ export function rushStepsLeft(world: World): number {
   return left > 0 ? left : 0;
 }
 
+/** 総崩れの進み具合。始まる前は 0、震えている間に 1 へ近づく */
+export function finaleProgress(world: World): number {
+  if (world.finaleStep < 0) return 0;
+  const elapsed = world.step - world.finaleStep;
+  if (elapsed >= FINALE_SHAKE_STEPS) return 1;
+  return elapsed / FINALE_SHAKE_STEPS;
+}
+
 export function isCleared(world: World): boolean {
   return world.remainingUnits <= 0;
 }
@@ -185,6 +200,7 @@ export function snapshot(world: World): WorldSnapshot {
     hitCount: world.hitCount,
     lastHitStep: world.lastHitStep,
     rushUntilStep: world.rushUntilStep,
+    finaleStep: world.finaleStep,
     clearedStep: world.clearedStep,
   };
 }
@@ -201,6 +217,7 @@ export function restore(world: World, snap: WorldSnapshot): void {
   world.hitCount = snap.hitCount;
   world.lastHitStep = snap.lastHitStep;
   world.rushUntilStep = snap.rushUntilStep;
+  world.finaleStep = snap.finaleStep;
   world.clearedStep = snap.clearedStep;
 }
 

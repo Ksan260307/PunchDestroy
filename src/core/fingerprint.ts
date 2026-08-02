@@ -72,6 +72,7 @@ export function worldFingerprint(world: World): string {
   d = pushInt(d, world.hitCount);
   d = pushInt(d, world.lastHitStep);
   d = pushInt(d, world.rushUntilStep);
+  d = pushInt(d, world.finaleStep);
   d = pushInt(d, world.clearedStep);
   return toHex(d);
 }

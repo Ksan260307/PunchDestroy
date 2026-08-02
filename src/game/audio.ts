@@ -1,7 +1,15 @@
 /**
  * 音はすべてその場で合成する（音声ファイルを持たない）。
  * 連打するほど音が高くなるので、手応えが耳でも分かる。
+ *
+ * 携帯端末では、他のアプリへ切り替えたり画面を閉じたりすると
+ * 音の仕組みごと止められることがある。戻ってきたら鳴らし直せるよう、
+ * 状態を見て起こす・だめなら作り直す、の2段構えにしてある。
  */
+
+const VOLUME = 0.85;
+
+type WindowWithAudio = Window & { webkitAudioContext?: typeof AudioContext };
 
 export class SoundKit {
   private ctx: AudioContext | null = null;
@@ -9,55 +17,131 @@ export class SoundKit {
   private noise: AudioBuffer | null = null;
   private muted = false;
   private lastPlay = 0;
+  private reviving = false;
 
   get enabled(): boolean {
     return !this.muted;
   }
 
+  /** いま音を出せる状態か（点検用） */
+  get running(): boolean {
+    return this.ctx?.state === 'running';
+  }
+
   /** 最初の操作のときに呼ぶ。ブラウザの制限で、それより前には鳴らせない */
   unlock(): void {
-    if (this.ctx) {
-      if (this.ctx.state === 'suspended') void this.ctx.resume();
+    if (!this.ctx || this.ctx.state === 'closed') {
+      this.build();
       return;
     }
-    type WindowWithAudio = Window & { webkitAudioContext?: typeof AudioContext };
+    this.wake();
+  }
+
+  /**
+   * 画面へ戻ってきたときに呼ぶ。
+   * 止められたままなら起こし、それでも動かなければ作り直す。
+   */
+  resume(): void {
+    if (!this.ctx) return;
+    if (this.ctx.state === 'closed') {
+      this.build();
+      return;
+    }
+    this.wake();
+  }
+
+  private build(): void {
     const Ctor = window.AudioContext ?? (window as WindowWithAudio).webkitAudioContext;
     if (!Ctor) return;
 
-    const ctx = new Ctor();
-    const master = ctx.createGain();
-    master.gain.value = 0.85;
-    const limiter = ctx.createDynamicsCompressor();
-    limiter.threshold.value = -8;
-    limiter.ratio.value = 12;
-    limiter.attack.value = 0.002;
-    limiter.release.value = 0.12;
-    master.connect(limiter).connect(ctx.destination);
+    try {
+      const ctx = new Ctor();
+      const master = ctx.createGain();
+      master.gain.value = this.muted ? 0 : VOLUME;
+      const limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = -8;
+      limiter.ratio.value = 12;
+      limiter.attack.value = 0.002;
+      limiter.release.value = 0.12;
+      master.connect(limiter).connect(ctx.destination);
 
-    const length = Math.floor(ctx.sampleRate * 0.5);
-    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    let seed = 0x2f6e2b1;
-    for (let i = 0; i < length; i++) {
-      seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
-      data[i] = ((seed >>> 8) / 8388608 - 1) * 0.9;
+      const length = Math.floor(ctx.sampleRate * 0.5);
+      const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      let seed = 0x2f6e2b1;
+      for (let i = 0; i < length; i++) {
+        seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
+        data[i] = ((seed >>> 8) / 8388608 - 1) * 0.9;
+      }
+
+      // 止められたら気づけるようにしておく
+      ctx.addEventListener?.('statechange', () => {
+        if (ctx.state !== 'running') this.wake();
+      });
+
+      this.ctx = ctx;
+      this.master = master;
+      this.noise = buffer;
+      this.lastPlay = 0;
+      this.wake();
+    } catch {
+      this.ctx = null;
+      this.master = null;
+      this.noise = null;
     }
+  }
 
-    this.ctx = ctx;
-    this.master = master;
-    this.noise = buffer;
+  /** 止まっていれば起こす。起こせなければ作り直す */
+  private wake(): void {
+    const ctx = this.ctx;
+    if (!ctx || ctx.state === 'running' || this.reviving) return;
+    this.reviving = true;
+    const done = () => {
+      this.reviving = false;
+    };
+    try {
+      const result = ctx.resume();
+      if (result && typeof result.then === 'function') {
+        result.then(done, () => {
+          done();
+          this.rebuild();
+        });
+      } else {
+        done();
+      }
+    } catch {
+      done();
+      this.rebuild();
+    }
+  }
+
+  /** 作り直す。古いほうは片付ける */
+  private rebuild(): void {
+    const old = this.ctx;
+    this.ctx = null;
+    this.master = null;
+    this.noise = null;
+    try {
+      void old?.close();
+    } catch {
+      /* すでに閉じている */
+    }
+    this.build();
   }
 
   setMuted(value: boolean): void {
     this.muted = value;
     if (this.master && this.ctx) {
-      this.master.gain.setTargetAtTime(value ? 0 : 0.85, this.ctx.currentTime, 0.02);
+      this.master.gain.setTargetAtTime(value ? 0 : VOLUME, this.ctx.currentTime, 0.02);
     }
   }
 
   private ready(): boolean {
     if (this.muted || !this.ctx || !this.master) return false;
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    if (this.ctx.state !== 'running') {
+      this.wake();
+      return false;
+    }
     return true;
   }
 
@@ -144,6 +228,14 @@ export class SoundKit {
     if (!this.ready()) return;
     this.burst(0.7, 0.5, 'lowpass', 900, 90, 0.7);
     this.tone('sine', 90, 28, 0.6, 0.4);
+  }
+
+  /** 崩れる直前の地響き。長く低く鳴らす */
+  rumble(seconds: number): void {
+    if (!this.ready()) return;
+    this.burst(seconds, 0.42, 'lowpass', 260, 60, 0.5);
+    this.tone('sine', 44, 30, seconds, 0.45);
+    this.tone('triangle', 62, 41, seconds * 0.9, 0.2);
   }
 
   rush(): void {
