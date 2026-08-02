@@ -67,6 +67,10 @@ export interface World {
   hitCount: number;
   lastHitStep: number;
   rushUntilStep: number;
+  /** 直近にどれだけ立て続けに殴ったかの数え上げ */
+  recentHits: number;
+  /** 乱打が続く回。切れていれば現在の回以下 */
+  barrageUntilStep: number;
   /** 総崩れが始まった回。まだなら -1 */
   finaleStep: number;
   clearedStep: number;
@@ -86,6 +90,8 @@ export interface WorldSnapshot {
   hitCount: number;
   lastHitStep: number;
   rushUntilStep: number;
+  recentHits: number;
+  barrageUntilStep: number;
   finaleStep: number;
   clearedStep: number;
 }
@@ -119,6 +125,8 @@ export function createWorld(seed: number, shape: StatueShape = getStatueShape())
     hitCount: 0,
     lastHitStep: -9999,
     rushUntilStep: 0,
+    recentHits: 0,
+    barrageUntilStep: 0,
     finaleStep: -1,
     clearedStep: -1,
     report: createReport(),
@@ -135,6 +143,9 @@ function createReport(): StepReport {
     comboBroken: false,
     rush: false,
     rushStarted: false,
+    barrage: false,
+    barrageStarted: false,
+    landed: 0,
     finaleStarted: false,
     finaleShaking: false,
     cleared: false,
@@ -175,6 +186,16 @@ export function rushStepsLeft(world: World): number {
   return left > 0 ? left : 0;
 }
 
+export function isBarrage(world: World): boolean {
+  return world.barrageUntilStep > world.step;
+}
+
+/** 乱打の残り（刻み数）。切れていれば 0 */
+export function barrageStepsLeft(world: World): number {
+  const left = world.barrageUntilStep - world.step;
+  return left > 0 ? left : 0;
+}
+
 /** 総崩れの進み具合。始まる前は 0、震えている間に 1 へ近づく */
 export function finaleProgress(world: World): number {
   if (world.finaleStep < 0) return 0;
@@ -200,6 +221,8 @@ export function snapshot(world: World): WorldSnapshot {
     hitCount: world.hitCount,
     lastHitStep: world.lastHitStep,
     rushUntilStep: world.rushUntilStep,
+    recentHits: world.recentHits,
+    barrageUntilStep: world.barrageUntilStep,
     finaleStep: world.finaleStep,
     clearedStep: world.clearedStep,
   };
@@ -217,6 +240,8 @@ export function restore(world: World, snap: WorldSnapshot): void {
   world.hitCount = snap.hitCount;
   world.lastHitStep = snap.lastHitStep;
   world.rushUntilStep = snap.rushUntilStep;
+  world.recentHits = snap.recentHits;
+  world.barrageUntilStep = snap.barrageUntilStep;
   world.finaleStep = snap.finaleStep;
   world.clearedStep = snap.clearedStep;
 }

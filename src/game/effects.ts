@@ -97,6 +97,7 @@ export class EffectSystem {
   private comboText: FloatingText | null = null;
   private breakStep = -999;
   private breakCount = 0;
+  private oraStep = -999;
 
   constructor(capacity = 3600) {
     this.capacity = capacity;
@@ -122,6 +123,7 @@ export class EffectSystem {
     this.comboText = null;
     this.breakStep = -999;
     this.breakCount = 0;
+    this.oraStep = -999;
     this.glowPoints.fill(0);
     this.glowCursor = 0;
     this.shakeX = 0;
@@ -179,11 +181,33 @@ export class EffectSystem {
     for (let i = 0; i < report.hits.length; i++) {
       const hit = report.hits[i];
       this.onHit(hit.x, hit.y, hit.z, hit.radius, hit.removed, hit.kind === 1, view);
+      // 乱打の追い打ちも、小さめに散らす
+      for (let e = 0; e + 2 < hit.echoes.length; e += 3) {
+        this.onEcho(hit.echoes[e], hit.echoes[e + 1], hit.echoes[e + 2], hit.echoRadius, view);
+      }
     }
 
     if (report.hits.length > 0 && report.combo >= 5 && report.combo % 5 === 0) {
       this.pushCombo(report.combo);
       this.flash = Math.min(1, this.flash + 0.08);
+    }
+
+    if (report.barrageStarted) {
+      this.pushScreenText(0.5, 0.25, 'オラオラオラッ！', 52, '#e0245e');
+      this.flash = Math.min(1, this.flash + 0.2 * this.motionScale);
+      this.shakePower = Math.max(this.shakePower, 20);
+    }
+    if (report.barrage && report.hits.length > 0 && report.step - this.oraStep >= 5) {
+      const hit = report.hits[0];
+      this.oraStep = report.step;
+      this.pushWorldText(
+        toUnit(hit.x) + this.rng.range(-0.12, 0.12),
+        toUnit(hit.y) + this.rng.range(0.06, 0.22),
+        toUnit(hit.z),
+        'オラッ',
+        26,
+        '#e0245e',
+      );
     }
 
     if (report.collapsing.length > 0) {
@@ -349,6 +373,61 @@ export class EffectSystem {
         0,
       );
     }
+  }
+
+  /** 乱打の追い打ち。本体より小ぶりに散らす */
+  private onEcho(
+    vx: number,
+    vy: number,
+    vz: number,
+    radius: number,
+    view: WorldView,
+  ): void {
+    const wx = toUnit(vx);
+    const wy = toUnit(vy);
+    const wz = toUnit(vz);
+    const [r, g, b] = this.materialColor(view, vx, vy, vz);
+    const chunks = Math.round(14 * this.quality.burstScale);
+    for (let i = 0; i < chunks; i++) {
+      const dir = this.randomDirection();
+      const speed = this.rng.range(0.3, 1.4);
+      this.spawn(
+        wx,
+        wy,
+        wz,
+        dir[0] * speed,
+        dir[1] * speed + this.rng.range(0.1, 0.5),
+        dir[2] * speed,
+        this.rng.range(0.006, 0.02),
+        this.rng.range(0.3, 0.9),
+        r,
+        g,
+        b,
+        0,
+      );
+    }
+    const sparks = Math.round(8 * this.quality.burstScale);
+    for (let i = 0; i < sparks; i++) {
+      const dir = this.randomDirection();
+      const speed = this.rng.range(0.8, 2.4);
+      this.spawn(
+        wx,
+        wy,
+        wz,
+        dir[0] * speed,
+        dir[1] * speed,
+        dir[2] * speed,
+        this.rng.range(0.004, 0.011),
+        this.rng.range(0.1, 0.3),
+        1,
+        this.rng.range(0.7, 0.95),
+        this.rng.range(0.2, 0.45),
+        1,
+      );
+    }
+    this.addGlow(wx, wy, wz, 0.7);
+    this.shakePower = Math.min(44, this.shakePower + 4);
+    void radius;
   }
 
   /** 震えている間、まだ残っている区画からぱらぱらと粉が落ちる */

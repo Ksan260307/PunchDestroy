@@ -11,6 +11,8 @@
 export const CHARGE_MS = 520;
 /** ここを超えて動かしたら「回す」操作とみなす（画面の短辺に対する割合） */
 export const DRAG_RATIO = 0.022;
+/** 2本以上の指の間隔がこれだけ変わったら「寄り引き」とみなす（画面の短辺に対する割合） */
+export const PINCH_RATIO = 0.035;
 
 export interface PunchRequest {
   x: number;
@@ -41,6 +43,8 @@ export class PointerInput {
   private readonly touches = new Map<number, Touch>();
   private enabled = false;
   private pinchDistance = 0;
+  private pinchStart = 0;
+  private pinching = false;
 
   constructor(
     private readonly element: HTMLElement,
@@ -60,23 +64,37 @@ export class PointerInput {
     if (!value) {
       this.touches.clear();
       this.pinchDistance = 0;
+      this.pinchStart = 0;
+      this.pinching = false;
     }
   }
 
-  /** 押しっぱなしの溜まり具合（0〜1）。回している間は 0 */
+  /** いま触れている指の数 */
+  get pointerCount(): number {
+    return this.touches.size;
+  }
+
+  /** 寄り引きの操作中か */
+  get isPinching(): boolean {
+    return this.pinching;
+  }
+
+  /** 押しっぱなしの溜まり具合（0〜1）。回している間や寄り引き中は 0 */
   get charge(): number {
-    if (this.touches.size !== 1) return 0;
+    if (this.pinching || this.touches.size === 0) return 0;
     const now = performance.now();
+    let best = 0;
     for (const touch of this.touches.values()) {
-      if (touch.dragging) return 0;
-      return Math.min(1, (now - touch.chargeStart) / CHARGE_MS);
+      if (touch.dragging) continue;
+      const ratio = Math.min(1, (now - touch.chargeStart) / CHARGE_MS);
+      if (ratio > best) best = ratio;
     }
-    return 0;
+    return best;
   }
 
-  /** 毎フレーム呼ぶ。溜まりきった指があれば強打を出す */
+  /** 毎フレーム呼ぶ。溜まりきった指があれば強打を出す（指ごとに数える） */
   update(now: number): void {
-    if (!this.enabled || this.touches.size !== 1) return;
+    if (!this.enabled || this.pinching) return;
     for (const touch of this.touches.values()) {
       if (touch.dragging) continue;
       if (now - touch.chargeStart >= CHARGE_MS) {
@@ -105,9 +123,9 @@ export class PointerInput {
    * ここで捕まえてしまうと、押した先のボタンが反応しなくなる。
    */
   private onWidget(event: PointerEvent): boolean {
-    const target = event.target;
-    if (!(target instanceof Element)) return false;
-    return target.closest('button, a, input, .screen, [data-ui]') !== null;
+    const target = event.target as { closest?: (selector: string) => unknown } | null;
+    if (!target || typeof target.closest !== 'function') return false;
+    return target.closest('button, a, input, .screen, [data-ui]') != null;
   }
 
   private local(event: PointerEvent): { x: number; y: number } {
@@ -137,15 +155,20 @@ export class PointerInput {
       chargeStart: performance.now(),
       dragging: false,
     });
-    this.element.setPointerCapture?.(event.pointerId);
-
-    if (this.touches.size === 2) {
-      this.pinchDistance = this.currentPinch();
-      // 2本目が触れたら回転・殴打はいったん止めて寄り引きに専念する
-      for (const touch of this.touches.values()) touch.dragging = true;
-      return;
+    // 端末によっては受け取りを固定できないことがある。失敗しても操作は続ける
+    try {
+      this.element.setPointerCapture?.(event.pointerId);
+    } catch {
+      /* 固定できなくても困らない */
     }
-    if (this.touches.size === 1) {
+
+    if (this.touches.size >= 2) {
+      // 指の間隔を覚えておく。実際に広げ縮めするまでは寄り引きに入らない
+      this.pinchDistance = this.currentPinch();
+      this.pinchStart = this.pinchDistance;
+    }
+    // 指の数だけ殴れる。何本で叩いても、触れた瞬間にそれぞれ1発ずつ入る
+    if (!this.pinching) {
       this.handlers.punch({ x: point.x, y: point.y }, false);
     }
   };
@@ -164,10 +187,20 @@ export class PointerInput {
 
     if (this.touches.size >= 2) {
       const distance = this.currentPinch();
-      if (this.pinchDistance > 0 && distance > 0) {
+      if (!this.pinching) {
+        // 間隔がはっきり変わってから寄り引きに切り替える。
+        // これで「2本指で叩く」と「2本指で広げる」を取り違えない
+        const { width, height } = this.size();
+        const threshold = Math.min(width, height) * PINCH_RATIO;
+        if (this.pinchStart > 0 && Math.abs(distance - this.pinchStart) > threshold) {
+          this.pinching = true;
+          this.pinchDistance = distance;
+          for (const each of this.touches.values()) each.dragging = true;
+        }
+      } else if (this.pinchDistance > 0 && distance > 0) {
         this.handlers.zoom(distance / this.pinchDistance);
+        this.pinchDistance = distance;
       }
-      this.pinchDistance = distance;
       return;
     }
 
@@ -184,8 +217,14 @@ export class PointerInput {
 
   private handleUp = (event: PointerEvent): void => {
     this.touches.delete(event.pointerId);
-    if (this.touches.size < 2) this.pinchDistance = 0;
-    if (this.touches.size === 0) this.handlers.release();
+    if (this.touches.size < 2) {
+      this.pinchDistance = 0;
+      this.pinchStart = 0;
+    }
+    if (this.touches.size === 0) {
+      this.pinching = false;
+      this.handlers.release();
+    }
   };
 
   private handleWheel = (event: WheelEvent): void => {

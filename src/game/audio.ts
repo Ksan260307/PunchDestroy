@@ -230,6 +230,19 @@ export class SoundKit {
     this.tone('sine', 90, 28, 0.6, 0.4);
   }
 
+  /** 乱打の合図。短い連打が駆け上がる */
+  barrage(): void {
+    if (!this.ready()) return;
+    for (let i = 0; i < 6; i++) {
+      window.setTimeout(() => {
+        if (!this.ready()) return;
+        const pitch = 220 * Math.pow(2, i / 6);
+        this.tone('square', pitch, pitch * 0.8, 0.07, 0.14);
+        this.burst(0.08, 0.24, 'bandpass', 1600 + i * 260, 500, 1.2);
+      }, i * 55);
+    }
+  }
+
   /** 崩れる直前の地響き。長く低く鳴らす */
   rumble(seconds: number): void {
     if (!this.ready()) return;

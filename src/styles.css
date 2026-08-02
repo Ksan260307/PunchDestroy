@@ -284,6 +284,37 @@ button:focus-visible,
   background: linear-gradient(90deg, var(--amber), var(--accent));
 }
 
+.barrage {
+  position: absolute;
+  left: 50%;
+  top: calc(150px + env(safe-area-inset-top));
+  transform: translateX(-50%);
+  width: min(220px, 52vw);
+  text-align: center;
+}
+
+.barrage-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.3em;
+  color: #7a3ad0;
+  margin-bottom: 3px;
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.9);
+}
+
+.barrage .rush-track > i {
+  background: linear-gradient(90deg, #3aa7e0, #7a3ad0);
+}
+
+.barrage.hot .barrage-label {
+  color: var(--accent);
+}
+
+.barrage.hot .rush-track > i {
+  background: linear-gradient(90deg, #7a3ad0, var(--accent));
+}
+
 .charge {
   position: absolute;
   left: 50%;

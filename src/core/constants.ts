@@ -66,6 +66,23 @@ export const FINALE_SHAKE_STEPS = 78;
 /** 崩れが下から上へ広がる速さ（区画1段ぶんの遅れ） */
 export const FINALE_WAVE_STEPS = 5;
 
+/** 乱打（短い間に何発も入れたときの追い打ち）の設定 */
+/** 直近の打撃の数え上げが、何回ごとに1つ抜けていくか */
+export const BARRAGE_DECAY_STEPS = 6;
+/** 数え上げの上限 */
+export const BARRAGE_MAX_COUNT = 24;
+/** これだけ溜まると乱打に入る */
+export const BARRAGE_TRIGGER = 8;
+/** 乱打の持続 */
+export const BARRAGE_STEPS = 48;
+/** 乱打中、1発につき何発の追い打ちが出るか */
+export const BARRAGE_ECHOES = 2;
+/** 追い打ちの散らばり（マス） */
+export const BARRAGE_SPREAD = 10;
+/** 追い打ちの範囲と威力（%） */
+export const BARRAGE_ECHO_RADIUS_PERCENT = 72;
+export const BARRAGE_ECHO_POWER_PERCENT = 58;
+
 /** 打撃の種類 */
 export const HIT_JAB = 0;
 export const HIT_SMASH = 1;

@@ -21,7 +21,7 @@ import { createWorld, restore, type World, type WorldSnapshot } from './world';
 /** 記録の入れ物の版。中身の形式を変えたら上げる */
 export const RECORD_FORMAT = 3;
 /** 進行規則の版。削り方や連打の扱いを変えたら上げる */
-export const RULES_VERSION = 'punch-3';
+export const RULES_VERSION = 'punch-4';
 
 /** 1回の計算で受け付ける打撃数の上限 */
 export const MAX_HITS_PER_STEP = 8;

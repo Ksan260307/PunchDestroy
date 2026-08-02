@@ -35,6 +35,8 @@ export class Hud {
   private readonly chargeFill = need('charge-fill');
   private readonly rush = need('rush');
   private readonly rushFill = need('rush-fill');
+  private readonly barrage = need('barrage');
+  private readonly barrageFill = need('barrage-fill');
   private readonly zoomLabel = need('zoom-label');
   private readonly replayBadge = need('replay-badge');
   private readonly titleScreen = need('title');
@@ -47,6 +49,7 @@ export class Hud {
   private shownScore = 0;
   private lastCombo = -1;
   private lastRush = -1;
+  private lastBarrage = -1;
   private lastZoom = -1;
 
   reset(view: WorldView): void {
@@ -54,8 +57,10 @@ export class Hud {
     this.shownScore = 0;
     this.lastCombo = -1;
     this.lastRush = -1;
+    this.lastBarrage = -1;
     this.comboChip.classList.add('hidden');
     this.rush.classList.add('hidden');
+    this.barrage.classList.add('hidden');
   }
 
   setVisible(value: boolean): void {
@@ -136,6 +141,16 @@ export class Hud {
       this.rush.classList.toggle('hidden', rushLeft <= 0);
       this.rushFill.style.width = `${rushLeft}%`;
       this.lastRush = rushLeft;
+    }
+
+    // 乱打中は残り、そうでなければ入るまでの溜まり具合を出す
+    const hot = view.barrage;
+    const barrage = Math.round((hot ? view.barrageLeft : view.barrageCharge) * 100);
+    if (barrage !== this.lastBarrage) {
+      this.barrage.classList.toggle('hidden', barrage <= 0);
+      this.barrage.classList.toggle('hot', hot);
+      this.barrageFill.style.width = `${barrage}%`;
+      this.lastBarrage = barrage;
     }
   }
 

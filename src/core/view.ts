@@ -5,12 +5,14 @@
  * 逆向き（表示側から状態を書き換える）は用意しない。
  */
 
-import { RUSH_STEPS } from './constants';
+import { BARRAGE_STEPS, BARRAGE_TRIGGER, RUSH_STEPS } from './constants';
 import {
+  barrageStepsLeft,
   grainsRemaining,
   grainsDestroyed,
   destroyedRatio,
   finaleProgress,
+  isBarrage,
   isRush,
   rushStepsLeft,
   type World,
@@ -36,6 +38,12 @@ export interface WorldView {
   readonly rush: boolean;
   /** ラッシュの残り具合（0〜1） */
   readonly rushLeft: number;
+  /** 乱打中か */
+  readonly barrage: boolean;
+  /** 乱打の残り具合（0〜1） */
+  readonly barrageLeft: number;
+  /** 乱打に入るまでの溜まり具合（0〜1） */
+  readonly barrageCharge: number;
   /** 総崩れが始まっているか */
   readonly finale: boolean;
   /** 崩れ出すまでの張りつめ具合（0〜1）。1 になると崩れ始める */
@@ -98,6 +106,15 @@ export function createView(world: World): WorldView {
     },
     get rushLeft() {
       return Math.min(1, rushStepsLeft(world) / RUSH_STEPS);
+    },
+    get barrage() {
+      return isBarrage(world);
+    },
+    get barrageLeft() {
+      return Math.min(1, barrageStepsLeft(world) / BARRAGE_STEPS);
+    },
+    get barrageCharge() {
+      return Math.min(1, world.recentHits / BARRAGE_TRIGGER);
     },
     get finale() {
       return world.finaleStep >= 0;

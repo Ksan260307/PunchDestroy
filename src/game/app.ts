@@ -376,6 +376,10 @@ export class Game {
       this.buzz(38);
     }
     if (report.rushStarted) this.sound.rush();
+    if (report.barrageStarted) {
+      this.sound.barrage();
+      if ('vibrate' in navigator) navigator.vibrate?.([12, 24, 12, 24, 12, 24, 20]);
+    }
     if (report.finaleStarted) {
       this.sound.rumble(FINALE_SHAKE_STEPS / STEPS_PER_SECOND);
       this.hud.setHint('石像が震えている……！');

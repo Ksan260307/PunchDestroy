@@ -14,6 +14,14 @@
  */
 
 import {
+  BARRAGE_DECAY_STEPS,
+  BARRAGE_ECHOES,
+  BARRAGE_ECHO_POWER_PERCENT,
+  BARRAGE_ECHO_RADIUS_PERCENT,
+  BARRAGE_MAX_COUNT,
+  BARRAGE_SPREAD,
+  BARRAGE_STEPS,
+  BARRAGE_TRIGGER,
   BLOCKS,
   BLOCK_COLLAPSING,
   BLOCK_COUNT,
@@ -39,7 +47,7 @@ import {
   SMASH_RADIUS,
 } from './constants';
 import { hash2, hash3 } from './random';
-import { blockBounds, isRush, type World } from './world';
+import { blockBounds, isBarrage, isRush, type World } from './world';
 
 export interface Hit {
   readonly step: number;
@@ -60,6 +68,10 @@ export interface HitFeedback {
   /** 実際に減った量 */
   removed: number;
   kind: number;
+  /** 乱打中に出た追い打ちの位置。[x, y, z] の並び */
+  echoes: number[];
+  /** 追い打ちの範囲 */
+  echoRadius: number;
 }
 
 export interface StepReport {
@@ -71,6 +83,12 @@ export interface StepReport {
   comboBroken: boolean;
   rush: boolean;
   rushStarted: boolean;
+  /** 乱打中か */
+  barrage: boolean;
+  /** 乱打に入った回 */
+  barrageStarted: boolean;
+  /** この回に入った打撃の数（追い打ちを含まない） */
+  landed: number;
   /** 総崩れの合図が出た回 */
   finaleStarted: boolean;
   /** 崩れる前に震えている最中 */
@@ -149,16 +167,86 @@ function clampCoord(value: number): number {
  * 打撃1発を反映する。
  * 削り量は「種・回数・打撃の中身・マス番号」だけから決まるので、
  * 同じ回に来た打撃の並び順を入れ替えても結果は変わらない。
+ *
+ * 乱打中は、1発につき追い打ちが近くへ飛ぶ。
+ * 追い打ちの位置も打撃の中身だけから決まるので、順番に依らない。
  */
 export function applyHit(world: World, hit: Hit, report: StepReport): HitFeedback {
   const { radius, power, sharpness } = hitParams(world, hit.kind);
-  const cx = hit.x;
-  const cy = hit.y;
-  const cz = hit.z;
+  const salt = hash2(world.seed, world.step);
+  const key = (hit.kind << 24) ^ ((hit.z << 16) | (hit.y << 8) | hit.x);
+
+  const main = applyStrike(world, hit.x, hit.y, hit.z, radius, power, sharpness, salt, key, report);
+
+  const feedback: HitFeedback = {
+    x: hit.x,
+    y: hit.y,
+    z: hit.z,
+    radius,
+    power,
+    damage: main.damage,
+    removed: main.removed,
+    kind: hit.kind,
+    echoes: [],
+    echoRadius: 0,
+  };
+
+  if (!isBarrage(world)) return feedback;
+
+  const echoRadius = Math.max(3, ((radius * BARRAGE_ECHO_RADIUS_PERCENT) / 100) | 0);
+  const echoPower = Math.max(1, ((power * BARRAGE_ECHO_POWER_PERCENT) / 100) | 0);
+  feedback.echoRadius = echoRadius;
+
+  for (let i = 0; i < BARRAGE_ECHOES; i++) {
+    const spread = hash3(salt, key, 0x51ed + i);
+    const ex = clampCoord(hit.x + offsetFrom(spread, 0));
+    const ey = clampCoord(hit.y + offsetFrom(spread, 5));
+    const ez = clampCoord(hit.z + offsetFrom(spread, 10));
+    const echo = applyStrike(
+      world,
+      ex,
+      ey,
+      ez,
+      echoRadius,
+      echoPower,
+      sharpness,
+      salt,
+      (key ^ (0x9e37 * (i + 1))) | 0,
+      report,
+    );
+    feedback.damage += echo.damage;
+    feedback.removed += echo.removed;
+    feedback.echoes.push(ex, ey, ez);
+  }
+  return feedback;
+}
+
+/** 散らばりの取り出し。-BARRAGE_SPREAD 〜 +BARRAGE_SPREAD に収める */
+function offsetFrom(bits: number, shift: number): number {
+  const raw = (bits >>> shift) & 31;
+  return ((raw * (2 * BARRAGE_SPREAD + 1)) >> 5) - BARRAGE_SPREAD;
+}
+
+interface StrikeResult {
+  damage: number;
+  removed: number;
+}
+
+/** 球ひとつぶんの削り。追い打ちも本体もこれを通る */
+function applyStrike(
+  world: World,
+  cx: number,
+  cy: number,
+  cz: number,
+  radius: number,
+  power: number,
+  sharpness: number,
+  salt: number,
+  key: number,
+  report: StepReport,
+): StrikeResult {
   const r2 = radius * radius;
   const r4 = r2 * r2;
-  const salt = hash2(world.seed, world.step);
-  const key = (hit.kind << 24) ^ ((cz << 16) | (cy << 8) | cx);
 
   const minX = clampCoord(cx - radius);
   const maxX = clampCoord(cx + radius);
@@ -212,7 +300,7 @@ export function applyHit(world: World, hit: Hit, report: StepReport): HitFeedbac
   world.remainingUnits -= removed;
   if (removed > 0) widen(report, minX, minY, minZ, maxX, maxY, maxZ);
 
-  return { x: cx, y: cy, z: cz, radius, power, damage: intended, removed, kind: hit.kind };
+  return { damage: intended, removed };
 }
 
 /** 崩れ始めた区画を、まとめて削り落とす */
@@ -263,12 +351,18 @@ export function advance(world: World, hits: readonly Hit[]): StepReport {
   report.scoreGain = 0;
   report.comboBroken = false;
   report.rushStarted = false;
+  report.barrageStarted = false;
+  report.landed = 0;
   report.finaleStarted = false;
   report.finaleShaking = false;
   report.cleared = false;
   report.dirtyValid = false;
 
   const rushBefore = isRush(world);
+  const barrageBefore = isBarrage(world);
+
+  // 乱打の判定は、打撃を入れる前の数え上げで決める（同じ回の中で条件が変わらないように）
+  updateBarrage(world, hits.length);
 
   let removed = 0;
   for (let i = 0; i < hits.length; i++) {
@@ -278,6 +372,7 @@ export function advance(world: World, hits: readonly Hit[]): StepReport {
   }
   removed += applyCollapse(world, report);
   report.removed = removed;
+  report.landed = hits.length;
 
   updateBlocks(world, report);
   updateCombo(world, hits.length, report);
@@ -292,6 +387,8 @@ export function advance(world: World, hits: readonly Hit[]): StepReport {
   report.combo = world.combo;
   report.rush = isRush(world);
   report.rushStarted = report.rush && !rushBefore;
+  report.barrage = isBarrage(world);
+  report.barrageStarted = report.barrage && !barrageBefore;
 
   world.step++;
   return report;
@@ -319,6 +416,22 @@ function updateBlocks(world: World, report: StepReport): void {
     } else if (left < origin) {
       world.blockState[block] = BLOCK_DAMAGED;
     }
+  }
+}
+
+/**
+ * 立て続けに殴っているかを数える。
+ * 一定の間隔でひとつずつ抜けていくので、指を増やして速く叩くほど溜まる。
+ */
+function updateBarrage(world: World, hitCount: number): void {
+  if (world.step % BARRAGE_DECAY_STEPS === 0 && world.recentHits > 0) {
+    world.recentHits--;
+  }
+  if (hitCount > 0) {
+    world.recentHits = Math.min(BARRAGE_MAX_COUNT, world.recentHits + hitCount);
+  }
+  if (world.recentHits >= BARRAGE_TRIGGER) {
+    world.barrageUntilStep = world.step + BARRAGE_STEPS;
   }
 }
 
