@@ -68,6 +68,61 @@ describe('カメラの向き', () => {
   });
 });
 
+describe('画面の縦横比', () => {
+  it('渡された縦横比をそのまま使う（描く側の実寸に合わせる）', () => {
+    const camera = new OrbitCamera();
+    // 画面は横長でも、実際に描いている面が正方形ならそちらに合わせる
+    camera.refresh(1200, 600, 1);
+    expect(camera.aspect).toBe(1);
+    camera.refresh(1200, 600);
+    expect(camera.aspect).toBeCloseTo(2, 5);
+  });
+
+  it('縦横比のぶんだけ横に広く写す（伸びない）', () => {
+    const wide = new OrbitCamera();
+    wide.refresh(1200, 600, 2);
+    const square = new OrbitCamera();
+    square.refresh(600, 600, 1);
+
+    // 同じ大きさのものを、画面の短辺に対して同じ割合で写す
+    const heightOf = (camera: OrbitCamera, w: number, h: number) => {
+      const a = camera.project(0, 0, 0, w, h);
+      const b = camera.project(0, 0.2, 0, w, h);
+      return Math.abs(b.y - a.y) / h;
+    };
+    expect(heightOf(wide, 1200, 600)).toBeCloseTo(heightOf(square, 600, 600), 5);
+
+    const widthOf = (camera: OrbitCamera, w: number, h: number) => {
+      const a = camera.project(0, 0, 0, w, h);
+      const b = camera.project(0.2, 0, 0, w, h);
+      return Math.abs(b.x - a.x) / w;
+    };
+    // 横長の画面では、同じ幅のものは画面比で半分の割合になる
+    expect(widthOf(wide, 1200, 600) * 2).toBeCloseTo(widthOf(square, 600, 600), 5);
+  });
+
+  it('おかしな縦横比は無視する', () => {
+    const camera = new OrbitCamera();
+    camera.refresh(900, 600, 0);
+    expect(camera.aspect).toBe(1);
+    camera.refresh(900, 600, Number.NaN);
+    expect(camera.aspect).toBe(1);
+  });
+
+  it('狙いも同じ縦横比で計算される', () => {
+    const camera = new OrbitCamera();
+    camera.refresh(1200, 600, 1);
+    // 実際に描いている面が正方形なら、画面の端でも狙いは正方形として扱う
+    const ray = camera.rayFrom(1200, 300, 1200, 600);
+    const ndc = 1 * camera.tanHalf * camera.aspect;
+    const expected = camera.fx + camera.rx * ndc;
+    expect(ray.dx / Math.hypot(ray.dx, ray.dy, ray.dz)).toBeCloseTo(
+      expected / Math.hypot(expected, camera.fy, camera.fz + camera.rz * ndc),
+      5,
+    );
+  });
+});
+
 describe('拡大', () => {
   it('決めた範囲より外へは出ない', () => {
     const camera = made();

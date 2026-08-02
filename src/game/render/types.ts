@@ -14,6 +14,8 @@ export interface RenderFrame {
 
 export interface Renderer {
   readonly kind: 'webgl' | 'canvas';
+  /** いま実際に描いている面の縦横比 */
+  readonly aspect: number;
   resize(width: number, height: number, pixelRatio: number): void;
   /** 石像の中身を全部送り直す */
   invalidate(): void;

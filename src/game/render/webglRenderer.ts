@@ -14,6 +14,9 @@ import type { RenderFrame, Renderer } from './types';
 const NEAR = '0.05';
 const FAR = '10.0';
 
+/** 一度に描く点の数の上限。携帯端末で確保に失敗しないよう抑えておく */
+const MAX_DRAW_PIXELS = 2_600_000;
+
 const QUAD_VERT = `#version 300 es
 in vec2 aCorner;
 out vec2 vUv;
@@ -420,11 +423,22 @@ export class WebGLRenderer implements Renderer {
     return tex;
   }
 
+  /** いま実際に描いている面の縦横比。端末が描画面を切り詰めても正しい値になる */
+  get aspect(): number {
+    const gl = this.gl;
+    return gl.drawingBufferWidth / Math.max(1, gl.drawingBufferHeight);
+  }
+
   resize(width: number, height: number, pixelRatio: number): void {
     this.width = width;
     this.height = height;
-    const w = Math.max(1, Math.round(width * pixelRatio));
-    const h = Math.max(1, Math.round(height * pixelRatio));
+    // 端末が確保できる大きさを超えると、縦横がばらばらに切り詰められて
+    // 絵が伸びることがある。縦横比を保ったまま面積を抑えておく
+    let ratio = pixelRatio;
+    const wanted = width * height * ratio * ratio;
+    if (wanted > MAX_DRAW_PIXELS) ratio *= Math.sqrt(MAX_DRAW_PIXELS / wanted);
+    const w = Math.max(1, Math.round(width * ratio));
+    const h = Math.max(1, Math.round(height * ratio));
     if (this.canvas.width !== w || this.canvas.height !== h) {
       this.canvas.width = w;
       this.canvas.height = h;
@@ -462,7 +476,8 @@ export class WebGLRenderer implements Renderer {
     const view = frame.view;
     const camera = frame.camera;
 
-    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    // 端末が描画面を切り詰めることがあるので、実際に描ける大きさを使う
+    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.clearColor(0, 0, 0, 0);
     gl.clearDepth(1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -473,7 +488,7 @@ export class WebGLRenderer implements Renderer {
 
     const shakeX = (fx.shakeX / this.width) * 2;
     const shakeY = (-fx.shakeY / this.height) * 2;
-    const tanX = camera.tanHalf * camera.aspect * fx.zoom;
+    const tanX = camera.tanHalf * this.aspect * fx.zoom;
     const tanY = camera.tanHalf * fx.zoom;
 
     gl.enable(gl.DEPTH_TEST);

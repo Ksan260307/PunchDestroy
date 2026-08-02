@@ -35,6 +35,12 @@ muteButton.addEventListener('click', (event) => {
   muteButton.classList.toggle('off', !game.toggleSound());
 });
 
+// 携帯端末は「指が触れているその場」でしか音を出せるようにできない。
+// 画面のどこを触っても開けるよう、いちばん外側でも受けておく。
+for (const type of ['pointerdown', 'touchend', 'click'] as const) {
+  document.addEventListener(type, () => game.unlockSound(), { capture: true, passive: true });
+}
+
 // スクロールや拡大でゲームがずれないようにする
 document.addEventListener(
   'touchmove',

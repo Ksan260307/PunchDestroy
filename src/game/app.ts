@@ -113,8 +113,15 @@ export class Game {
   }
 
   toggleSound(): boolean {
+    // 触れているこの場で開けておく（携帯端末はここでしか開かない）
+    this.sound.unlock();
     this.sound.setMuted(this.sound.enabled);
     return this.sound.enabled;
+  }
+
+  /** 画面のどこを触っても音を出せる状態にする */
+  unlockSound(): void {
+    this.sound.unlock();
   }
 
   recenter(): void {
@@ -347,7 +354,7 @@ export class Game {
 
     this.fx.update(dt);
     this.camera.update(dt);
-    this.camera.refresh(this.width, this.height);
+    this.camera.refresh(this.width, this.height, this.renderer.aspect);
 
     const view = this.view;
     if (view) {

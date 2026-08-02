@@ -75,8 +75,13 @@ export class OrbitCamera {
     return this.zoom;
   }
 
-  refresh(width: number, height: number): void {
-    this.aspect = width / Math.max(1, height);
+  /**
+   * 見え方を作り直す。
+   * `aspect` は実際に描いている面の縦横比。端末が描画面を切り詰めることがあるので、
+   * 画面の大きさから決めうちにせず、描く側から受け取る。
+   */
+  refresh(width: number, height: number, aspect = width / Math.max(1, height)): void {
+    this.aspect = aspect > 0 && Number.isFinite(aspect) ? aspect : 1;
 
     const zoom = clamp(this.zoom, MIN_ZOOM, MAX_ZOOM);
     this.zoom = zoom;

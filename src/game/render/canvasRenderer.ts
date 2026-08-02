@@ -66,6 +66,10 @@ export class CanvasRenderer implements Renderer {
     );
   }
 
+  get aspect(): number {
+    return this.innerW / Math.max(1, this.innerH);
+  }
+
   invalidate(): void {
     /* 毎回描き直しているので合図は要らない */
   }

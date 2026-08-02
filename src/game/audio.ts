@@ -30,10 +30,13 @@ export class SoundKit {
 
   /** 最初の操作のときに呼ぶ。ブラウザの制限で、それより前には鳴らせない */
   unlock(): void {
+    // 指が触れているこの場は、何度でもやり直してよい
+    this.reviving = false;
     if (!this.ctx || this.ctx.state === 'closed') {
       this.build();
       return;
     }
+    this.kick();
     this.wake();
   }
 
@@ -43,6 +46,7 @@ export class SoundKit {
    */
   resume(): void {
     if (!this.ctx) return;
+    this.reviving = false;
     if (this.ctx.state === 'closed') {
       this.build();
       return;
@@ -84,10 +88,29 @@ export class SoundKit {
       this.noise = buffer;
       this.lastPlay = 0;
       this.wake();
+      // 携帯端末は「起こす」だけでは開かない。指が触れているこの場で
+      // 実際に音源をひとつ鳴らして初めて音が出るようになる
+      this.kick();
     } catch {
       this.ctx = null;
       this.master = null;
       this.noise = null;
+    }
+  }
+
+  /** 無音をひとつ鳴らして、音を出せる状態にする（携帯端末で必要） */
+  private kick(): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    try {
+      const silent = ctx.createBuffer(1, 1, ctx.sampleRate);
+      const source = ctx.createBufferSource();
+      source.buffer = silent;
+      source.connect(ctx.destination);
+      if (typeof source.start === 'function') source.start(0);
+      else (source as unknown as { noteOn: (t: number) => void }).noteOn(0);
+    } catch {
+      /* 鳴らせなくても、あとで起こし直す */
     }
   }
 
@@ -96,6 +119,7 @@ export class SoundKit {
     const ctx = this.ctx;
     if (!ctx || ctx.state === 'running' || this.reviving) return;
     this.reviving = true;
+    this.kick();
     const done = () => {
       this.reviving = false;
     };

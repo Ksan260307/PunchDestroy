@@ -68,6 +68,21 @@ class FakeContext {
     const data = new Float32Array(length);
     return { getChannelData: () => data };
   }
+
+  /** 実際に鳴らそうとした回数。携帯端末はこれがないと開かない */
+  started = 0;
+
+  createBufferSource() {
+    return {
+      buffer: null as unknown,
+      connect: (next: unknown) => next,
+      start: () => {
+        this.started++;
+      },
+      stop: () => {},
+      playbackRate: { value: 1 },
+    };
+  }
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -88,6 +103,45 @@ describe('音の立ち上げ', () => {
     sound.unlock();
     await flush();
     expect(created).toHaveLength(1);
+    expect(sound.running).toBe(true);
+  });
+
+  it('用意したその場で実際に音源を鳴らす（携帯端末の解錠）', async () => {
+    const sound = new SoundKit();
+    sound.unlock();
+    await flush();
+    expect(created[0].started).toBeGreaterThan(0);
+  });
+
+  it('触れるたびに開け直しを試みる', async () => {
+    const sound = new SoundKit();
+    sound.unlock();
+    await flush();
+    const before = created[0].started;
+    sound.unlock();
+    expect(created[0].started).toBeGreaterThan(before);
+    // 何度触れても作り直しはしない
+    expect(created).toHaveLength(1);
+  });
+
+  it('起こす途中で止まったままにならない', async () => {
+    const sound = new SoundKit();
+    sound.unlock();
+    await flush();
+    // 応答が返らないまま止められた状態を作る
+    created[0].state = 'interrupted';
+    created[0].resume = () => new Promise<void>(() => {});
+    sound.resume();
+    await flush();
+    expect(sound.running).toBe(false);
+
+    // 次に触れたときは、あらためて起こしにいける
+    created[0].resume = () => {
+      created[0].state = 'running';
+      return Promise.resolve();
+    };
+    sound.unlock();
+    await flush();
     expect(sound.running).toBe(true);
   });
 
