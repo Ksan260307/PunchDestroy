@@ -207,6 +207,39 @@ describe('見返し再生', () => {
   });
 });
 
+describe.each([
+  ['りんご', 'apple'],
+  ['メロン', 'melon'],
+  ['ぶどう', 'grape'],
+])('%s の見返し再生', (_name, id) => {
+  const session = new Session(864, id);
+  playScript(session, { every: 5, maxSteps: 240, seed: 864 });
+  const record = session.toRecord();
+
+  it('壊したものと同じ石像で再生される', () => {
+    const player = new RecordPlayer(record);
+    expect(player.world.statue.id).toBe(id);
+    expect(player.world.statue.id).toBe(session.world.statue.id);
+    expect(player.world.totalUnits).toBe(session.world.totalUnits);
+  });
+
+  it('最後まで流すと、遊んだときとぴったり同じになる', () => {
+    const player = new RecordPlayer(record);
+    let guard = 0;
+    while (!player.finished && guard++ < 10000) player.advance();
+    expect(worldFingerprint(player.world)).toBe(worldFingerprint(session.world));
+  });
+
+  it('途中のどの時点でも、作り直したものと食い違わない', () => {
+    const player = new RecordPlayer(record);
+    for (let step = 1; step <= 120; step++) {
+      player.advance();
+      if (step % 40 !== 0) continue;
+      expect(worldFingerprint(player.world)).toBe(worldFingerprint(replay(record, step)));
+    }
+  });
+});
+
 describe('操作の受け付け', () => {
   it('範囲の外を指しても内側に収める', () => {
     const session = new Session(1);

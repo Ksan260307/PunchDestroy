@@ -212,7 +212,7 @@ export class RecordPlayer {
 
   constructor(readonly record: SessionRecord) {
     ensureReplayable(record);
-    this.world = createWorld(record.seed);
+    this.world = createWorld(record.seed, record.statue);
   }
 
   get finished(): boolean {
