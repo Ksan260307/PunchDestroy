@@ -6,7 +6,7 @@
  */
 
 import { BLOCKS, GRID, MATERIAL_LEAF, MATERIAL_STEM, SOLID_THRESHOLD } from '../../core/constants';
-import { materialKind, surfaceDepth } from '../../core/shape';
+import { materialKind, onNet, STYLE_MELON, surfaceDepth } from '../../core/shape';
 import type { OrbitCamera } from '../camera';
 import type { RenderFrame, Renderer } from './types';
 
@@ -100,6 +100,7 @@ export class CanvasRenderer implements Renderer {
     const innerH = this.innerH;
     const tanY = camera.tanHalf * frame.fx.zoom;
     const tanX = tanY * camera.aspect;
+    const melon = view.statueStyle === STYLE_MELON;
 
     for (let py = 0; py < innerH; py++) {
       const ndcY = 1 - ((py + 0.5) / innerH) * 2;
@@ -196,6 +197,25 @@ export class CanvasRenderer implements Renderer {
           r = 0.34;
           g = 0.58;
           bl = 0.28;
+        } else if (melon) {
+          if (depth <= 2) {
+            const net = onNet(packed);
+            r = net ? 0.8 : 0.46;
+            g = net ? 0.79 : 0.56;
+            bl = net ? 0.62 : 0.27;
+          } else if (depth <= 5) {
+            r = 0.86;
+            g = 0.87;
+            bl = 0.72;
+          } else if (depth > 18) {
+            r = 0.88;
+            g = 0.92;
+            bl = 0.68;
+          } else {
+            r = 0.66;
+            g = 0.84;
+            bl = 0.5;
+          }
         } else if (depth <= 2) {
           r = 0.84;
           g = 0.14;

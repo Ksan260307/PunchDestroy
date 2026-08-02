@@ -11,6 +11,7 @@
 import { FINALE_SHAKE_STEPS, HIT_JAB, HIT_SMASH, STEPS_PER_SECOND, STEP_MS } from '../core/constants';
 import type { StepReport } from '../core/rules';
 import { RecordPlayer, Session, type SessionRecord } from '../core/session';
+import { DEFAULT_STATUE, findSpec, STATUES } from '../core/shape';
 import { traceSurface } from '../core/trace';
 import { createView, type WorldView } from '../core/view';
 import { SoundKit } from './audio';
@@ -44,7 +45,8 @@ export class Game {
   private player: RecordPlayer | null = null;
   private view: WorldView | null = null;
   private record: SessionRecord | null = null;
-  private best: BestRecord = loadBest();
+  private statueId: string = DEFAULT_STATUE;
+  private best: BestRecord = loadBest(DEFAULT_STATUE);
 
   private mode: Mode = 'title';
   private seed = 0;
@@ -87,6 +89,11 @@ export class Game {
     });
 
     this.applyMotionPreference();
+    this.hud.buildPicker(
+      STATUES.map((spec) => ({ id: spec.id, name: spec.name })),
+      this.statueId,
+      (id) => this.selectStatue(id),
+    );
     this.hud.setBest(this.best.score);
     this.measure();
     window.addEventListener('resize', this.measure);
@@ -114,11 +121,23 @@ export class Game {
     this.camera.reset();
   }
 
+  /** 何を壊すかを選ぶ（タイトルでのみ効く） */
+  selectStatue(id: string): void {
+    this.statueId = findSpec(id).id;
+    this.best = loadBest(this.statueId);
+    this.hud.setSelectedStatue(this.statueId);
+    this.hud.setBest(this.best.score);
+  }
+
+  get selectedStatue(): string {
+    return this.statueId;
+  }
+
   /** 新しい石像で始める */
   begin(seed = Math.floor(Math.random() * 0x7fffffff)): void {
     this.seed = seed;
     this.sound.unlock();
-    this.session = new Session(seed);
+    this.session = new Session(seed, this.statueId);
     this.player = null;
     this.view = createView(this.session.world);
     this.record = null;
@@ -411,9 +430,10 @@ export class Game {
     const newRecord = view.score > this.best.score;
     if (newRecord) {
       this.best = { score: view.score, seconds: this.elapsed, combo: view.bestCombo };
-      saveBest(this.best);
+      saveBest(view.statueId, this.best);
     }
     const stats = {
+      statueName: view.statueName,
       seconds: this.elapsed,
       hits: view.hitCount,
       attempts: this.attempts,
@@ -432,6 +452,7 @@ export class Game {
     this.hud.showReplayBadge(false);
     if (view) {
       this.hud.showResult({
+        statueName: view.statueName,
         seconds: this.elapsed,
         hits: view.hitCount,
         attempts: this.attempts,

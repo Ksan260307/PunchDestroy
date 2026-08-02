@@ -15,7 +15,7 @@
 import { GRID, HIT_JAB } from './constants';
 import { pushInt, shapeFingerprint, startDigest, toHex } from './fingerprint';
 import { advance, type Hit, type StepReport } from './rules';
-import { getStatueShape, SHAPE_NAME } from './shape';
+import { DEFAULT_STATUE, getStatue } from './shape';
 import { createWorld, restore, type World, type WorldSnapshot } from './world';
 
 /** 記録の入れ物の版。中身の形式を変えたら上げる */
@@ -29,20 +29,23 @@ export const MAX_HITS_PER_STEP = 8;
 /** 記録1件あたりの数値の個数 */
 const ENTRY = 5;
 
-let signatureCache: string | null = null;
+const signatureCache = new Map<string, string>();
 
-/** この実装が再現できる記録かどうかを見分けるための文字列 */
-export function currentSignature(): string {
-  if (signatureCache === null) {
-    const shape = getStatueShape();
-    const fp = shapeFingerprint(shape.density, shape.material);
-    signatureCache = `${RECORD_FORMAT}:${RULES_VERSION}:${SHAPE_NAME}:${fp}`;
-  }
-  return signatureCache;
+/** この実装が再現できる記録かどうかを見分けるための文字列（石像ごと） */
+export function currentSignature(statueId: string = DEFAULT_STATUE): string {
+  const shape = getStatue(statueId);
+  const cached = signatureCache.get(shape.id);
+  if (cached) return cached;
+  const fp = shapeFingerprint(shape.density, shape.material);
+  const signature = `${RECORD_FORMAT}:${RULES_VERSION}:${shape.id}:${fp}`;
+  signatureCache.set(shape.id, signature);
+  return signature;
 }
 
 export interface SessionRecord {
   signature: string;
+  /** どの石像を壊したか */
+  statue: string;
   seed: number;
   steps: number;
   /** [回, x, y, z, 種類] の並び。回の昇順 */
@@ -73,11 +76,16 @@ export class ReplayRejected extends Error {
 
 export class Session {
   readonly world: World;
+  readonly statueId: string;
   private readonly log: number[] = [];
   private readonly pending: Hit[] = [];
 
-  constructor(readonly seed: number) {
-    this.world = createWorld(seed);
+  constructor(
+    readonly seed: number,
+    statueId: string = DEFAULT_STATUE,
+  ) {
+    this.world = createWorld(seed, statueId);
+    this.statueId = this.world.statue.id;
   }
 
   get step(): number {
@@ -111,7 +119,8 @@ export class Session {
     const steps = this.world.step;
     const hits = this.log.slice();
     return {
-      signature: currentSignature(),
+      signature: currentSignature(this.statueId),
+      statue: this.statueId,
       seed: this.seed,
       steps,
       hits,
@@ -130,7 +139,7 @@ function clampGrid(value: number): number {
 
 /** 記録がこの実装で再現できるか確かめる。できなければ例外を投げる */
 export function ensureReplayable(record: SessionRecord): void {
-  const expected = currentSignature();
+  const expected = currentSignature(record.statue);
   if (record.signature !== expected) {
     throw new ReplayRejected(expected, record.signature);
   }
@@ -149,7 +158,7 @@ export function ensureReplayable(record: SessionRecord): void {
  */
 export function replay(record: SessionRecord, untilStep = record.steps): World {
   ensureReplayable(record);
-  const world = createWorld(record.seed);
+  const world = createWorld(record.seed, record.statue);
   return runFrom(world, record, 0, untilStep);
 }
 
@@ -163,7 +172,7 @@ export function replayFromSnapshot(
   untilStep = record.steps,
 ): World {
   ensureReplayable(record);
-  const world = createWorld(record.seed);
+  const world = createWorld(record.seed, record.statue);
   restore(world, snap);
   return runFrom(world, record, snap.step, untilStep);
 }
@@ -243,6 +252,7 @@ export function decodeRecord(text: string): SessionRecord {
   if (
     typeof raw.signature !== 'string' ||
     typeof raw.digest !== 'string' ||
+    typeof raw.statue !== 'string' ||
     typeof raw.seed !== 'number' ||
     typeof raw.steps !== 'number' ||
     !Array.isArray(raw.hits) ||
@@ -252,6 +262,7 @@ export function decodeRecord(text: string): SessionRecord {
   }
   return {
     signature: raw.signature,
+    statue: raw.statue,
     seed: raw.seed,
     steps: raw.steps,
     hits: raw.hits as number[],

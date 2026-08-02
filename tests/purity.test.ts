@@ -94,13 +94,19 @@ describe('数の扱い', () => {
     expect(JAB_RADIUS).toBeLessThan(SMASH_RADIUS);
   });
 
-  it('材質と深さを1バイトに詰めて取り出せる', async () => {
-    const { materialKind, surfaceDepth } = await import('../src/core/shape');
+  it('材質・深さ・網目の印を1バイトに詰めて取り出せる', async () => {
+    const { MAX_PACKED_DEPTH, materialKind, onNet, surfaceDepth } = await import(
+      '../src/core/shape'
+    );
     for (let kind = 0; kind < 4; kind++) {
-      for (let depth = 0; depth < 64; depth += 7) {
-        const packed = kind | (depth << 2);
-        expect(materialKind(packed)).toBe(kind);
-        expect(surfaceDepth(packed)).toBe(depth);
+      for (let depth = 0; depth <= MAX_PACKED_DEPTH; depth += 3) {
+        for (const net of [0, 128]) {
+          const packed = kind | (depth << 2) | net;
+          expect(packed).toBeLessThan(256);
+          expect(materialKind(packed)).toBe(kind);
+          expect(surfaceDepth(packed)).toBe(depth);
+          expect(onNet(packed)).toBe(net !== 0);
+        }
       }
     }
   });

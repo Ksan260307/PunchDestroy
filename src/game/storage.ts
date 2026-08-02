@@ -13,22 +13,41 @@ export interface BestRecord {
 
 export const EMPTY_BEST: BestRecord = { score: 0, seconds: 0, combo: 0 };
 
-export function loadBest(): BestRecord {
+export type BestTable = Record<string, BestRecord>;
+
+/** 石像ごとの自己ベストをまとめて読む */
+export function loadBestTable(): BestTable {
   try {
     const text = localStorage.getItem(KEY);
-    if (!text) return { ...EMPTY_BEST };
-    return normalize(JSON.parse(text));
+    if (!text) return {};
+    return normalizeTable(JSON.parse(text));
   } catch {
-    return { ...EMPTY_BEST };
+    return {};
   }
 }
 
-export function saveBest(record: BestRecord): void {
+export function loadBest(statueId: string): BestRecord {
+  return loadBestTable()[statueId] ?? { ...EMPTY_BEST };
+}
+
+export function saveBest(statueId: string, record: BestRecord): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(normalize(record)));
+    const table = loadBestTable();
+    table[statueId] = normalize(record);
+    localStorage.setItem(KEY, JSON.stringify(table));
   } catch {
     /* 保存できなくても遊べる */
   }
+}
+
+export function normalizeTable(raw: unknown): BestTable {
+  const table: BestTable = {};
+  if (!raw || typeof raw !== 'object') return table;
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof key !== 'string' || key.length === 0) continue;
+    table[key] = normalize(value);
+  }
+  return table;
 }
 
 export function normalize(raw: unknown): BestRecord {

@@ -20,7 +20,7 @@ import {
   TOTAL_GRAINS,
   VOXEL_COUNT,
 } from './constants';
-import { getStatueShape, type StatueShape } from './shape';
+import { DEFAULT_STATUE, getStatue, type StatueShape } from './shape';
 import type { StepReport } from './rules';
 
 export function voxelIndex(x: number, y: number, z: number): number {
@@ -41,6 +41,8 @@ export function blockOfVoxel(index: number): number {
 export interface World {
   step: number;
   readonly seed: number;
+  /** どの石像を壊しているか */
+  readonly statue: StatueShape;
 
   /** マスごとの残り量 */
   readonly density: Uint8Array;
@@ -96,7 +98,8 @@ export interface WorldSnapshot {
   clearedStep: number;
 }
 
-export function createWorld(seed: number, shape: StatueShape = getStatueShape()): World {
+export function createWorld(seed: number, statueId: string = DEFAULT_STATUE): World {
+  const shape = getStatue(statueId);
   const blockOrigin = new Int32Array(BLOCK_COUNT);
   for (let i = 0; i < VOXEL_COUNT; i++) {
     const amount = shape.density[i];
@@ -109,6 +112,7 @@ export function createWorld(seed: number, shape: StatueShape = getStatueShape())
   return {
     step: 0,
     seed: seed | 0,
+    statue: shape,
     density: shape.density.slice(),
     origin: shape.density,
     material: shape.material,

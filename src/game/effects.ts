@@ -9,7 +9,7 @@
 import { GRID, MATERIAL_LEAF, MATERIAL_STEM } from '../core/constants';
 import { DisplayRandom } from '../core/random';
 import type { StepReport } from '../core/rules';
-import { materialKind, surfaceDepth } from '../core/shape';
+import { materialKind, onNet, STYLE_MELON, surfaceDepth } from '../core/shape';
 import type { WorldView } from '../core/view';
 import { blockBounds, toUnit } from '../core/world';
 
@@ -254,9 +254,16 @@ export class EffectSystem {
     const kind = materialKind(packed);
     if (kind === MATERIAL_STEM) return [0.42, 0.29, 0.16];
     if (kind === MATERIAL_LEAF) return [0.3, 0.6, 0.24];
-    if (surfaceDepth(packed) <= 2) return [0.84, 0.16, 0.18];
-    const radius = Math.hypot(toUnit(x), toUnit(y) + 0.03, toUnit(z));
-    if (radius < 0.42) return [1, 0.66, 0.2];
+    const depth = surfaceDepth(packed);
+    const radius = Math.hypot(toUnit(x), toUnit(y) - view.statueCenterY, toUnit(z));
+    if (view.statueStyle === STYLE_MELON) {
+      if (depth <= 2) return onNet(packed) ? [0.8, 0.79, 0.62] : [0.46, 0.56, 0.27];
+      if (depth <= 5) return [0.86, 0.87, 0.72];
+      if (radius < view.statueCoreRadius) return [0.88, 0.92, 0.68];
+      return [0.66, 0.84, 0.5];
+    }
+    if (depth <= 2) return [0.84, 0.16, 0.18];
+    if (radius < view.statueCoreRadius) return [1, 0.66, 0.2];
     return [0.62, 0.6, 0.62];
   }
 

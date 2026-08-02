@@ -3,7 +3,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { EMPTY_BEST, loadBest, normalize, saveBest } from '../src/game/storage';
+import { EMPTY_BEST, loadBest, loadBestTable, normalize, saveBest } from '../src/game/storage';
 
 function fakeStorage(): Storage {
   const map = new Map<string, string>();
@@ -42,17 +42,39 @@ describe('保存と読み出し', () => {
   });
 
   it('保存したものを読み戻せる', () => {
-    saveBest({ score: 999, seconds: 12.5, combo: 30 });
-    expect(loadBest()).toEqual({ score: 999, seconds: 12.5, combo: 30 });
+    saveBest('apple', { score: 999, seconds: 12.5, combo: 30 });
+    expect(loadBest('apple')).toEqual({ score: 999, seconds: 12.5, combo: 30 });
+  });
+
+  it('石像ごとに別々に覚える', () => {
+    saveBest('apple', { score: 100, seconds: 10, combo: 5 });
+    saveBest('melon', { score: 200, seconds: 20, combo: 9 });
+    expect(loadBest('apple').score).toBe(100);
+    expect(loadBest('melon').score).toBe(200);
+    expect(Object.keys(loadBestTable()).sort()).toEqual(['apple', 'melon']);
+  });
+
+  it('片方を書き換えても、もう片方は残る', () => {
+    saveBest('apple', { score: 100, seconds: 10, combo: 5 });
+    saveBest('melon', { score: 200, seconds: 20, combo: 9 });
+    saveBest('apple', { score: 300, seconds: 30, combo: 12 });
+    expect(loadBest('apple').score).toBe(300);
+    expect(loadBest('melon').score).toBe(200);
   });
 
   it('何も保存していなければ 0 から始まる', () => {
-    expect(loadBest()).toEqual(EMPTY_BEST);
+    expect(loadBest('apple')).toEqual(EMPTY_BEST);
+    expect(loadBestTable()).toEqual({});
   });
 
   it('壊れた内容が入っていても落ちない', () => {
     localStorage.setItem('punch-destroy:best', '{壊れている');
-    expect(loadBest()).toEqual(EMPTY_BEST);
+    expect(loadBest('apple')).toEqual(EMPTY_BEST);
+  });
+
+  it('中身が数でなくても整えて読む', () => {
+    localStorage.setItem('punch-destroy:best', '{"apple":{"score":"たくさん"}}');
+    expect(loadBest('apple')).toEqual(EMPTY_BEST);
   });
 
   it('保存できない環境でも落ちない', () => {
@@ -64,7 +86,7 @@ describe('保存と読み出し', () => {
         throw new Error('使えません');
       },
     });
-    expect(() => saveBest({ score: 1, seconds: 1, combo: 1 })).not.toThrow();
-    expect(loadBest()).toEqual(EMPTY_BEST);
+    expect(() => saveBest('apple', { score: 1, seconds: 1, combo: 1 })).not.toThrow();
+    expect(loadBest('apple')).toEqual(EMPTY_BEST);
   });
 });

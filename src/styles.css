@@ -284,37 +284,6 @@ button:focus-visible,
   background: linear-gradient(90deg, var(--amber), var(--accent));
 }
 
-.barrage {
-  position: absolute;
-  left: 50%;
-  top: calc(150px + env(safe-area-inset-top));
-  transform: translateX(-50%);
-  width: min(220px, 52vw);
-  text-align: center;
-}
-
-.barrage-label {
-  display: block;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.3em;
-  color: #7a3ad0;
-  margin-bottom: 3px;
-  text-shadow: 0 0 12px rgba(255, 255, 255, 0.9);
-}
-
-.barrage .rush-track > i {
-  background: linear-gradient(90deg, #3aa7e0, #7a3ad0);
-}
-
-.barrage.hot .barrage-label {
-  color: var(--accent);
-}
-
-.barrage.hot .rush-track > i {
-  background: linear-gradient(90deg, #7a3ad0, var(--accent));
-}
-
 .charge {
   position: absolute;
   left: 50%;
@@ -430,6 +399,37 @@ button {
   gap: 10px;
   flex-wrap: wrap;
   justify-content: center;
+}
+
+.picker {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.pick {
+  min-width: 118px;
+  padding: 13px 22px;
+  border-radius: 16px;
+  border: 2px solid rgba(42, 37, 49, 0.14);
+  background: #fff;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 900;
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    transform 0.12s;
+}
+
+.pick:active {
+  transform: translateY(1px);
+}
+
+.pick[aria-checked='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 6px 18px rgba(232, 52, 79, 0.18);
 }
 
 .tips {

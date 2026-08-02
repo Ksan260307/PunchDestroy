@@ -7,7 +7,7 @@
  */
 
 import { BLOCKS, BLOCK_COUNT, GRID } from '../../core/constants';
-import { getStatueShape } from '../../core/shape';
+import { getStatue } from '../../core/shape';
 import { MAX_GLOW_POINTS } from '../effects';
 import type { RenderFrame, Renderer } from './types';
 
@@ -40,6 +40,8 @@ uniform vec4 uGlow[${MAX_GLOW_POINTS}];
 uniform float uRush;
 uniform float uTime;
 uniform float uCenterY;
+uniform float uCoreRadius;
+uniform int uStyle;
 
 in vec2 vUv;
 out vec4 outColor;
@@ -129,21 +131,29 @@ void main() {
 
   uint packed = uint(texture(uMeta, tc).r * 255.0 + 0.5);
   uint kind = packed & 3u;
+  bool onNet = (packed & 128u) != 0u;
   // 深さはマス単位の整数なので、少し散らして層の境目を目立たなくする
-  float depth = float(packed >> 2u) + (hash31(floor(p * 260.0)) - 0.5) * 1.7;
+  float depth = float((packed >> 2u) & 31u) + (hash31(floor(p * 260.0)) - 0.5) * 1.7;
 
   // もとの表面はマスの中心の取り方で 0〜2 くらいにばらつくので、そこは全部塗り面にする
   float paint = 1.0 - smoothstep(2.6, 6.5, depth);
   float coreDist = length(p - vec3(0.0, uCenterY, 0.0));
-  float core = smoothstep(0.44, 0.18, coreDist);
+  float core = smoothstep(uCoreRadius, uCoreRadius * 0.42, coreDist);
+  vec3 coreColor = uStyle == 1 ? vec3(0.88, 0.92, 0.68) : vec3(1.0, 0.68, 0.22);
 
   vec3 albedo;
   if (kind == 2u) albedo = vec3(0.46, 0.33, 0.20);
   else if (kind == 3u) albedo = vec3(0.34, 0.58, 0.28);
-  else {
+  else if (uStyle == 1) {
+    // メロン：緑の皮に白っぽい網の筋。削ると白い皮の下から淡い緑の果肉
+    vec3 skin = onNet ? vec3(0.80, 0.79, 0.62) : vec3(0.46, 0.56, 0.27);
+    albedo = mix(vec3(0.86, 0.87, 0.72), skin, paint);
+    albedo = mix(albedo, vec3(0.66, 0.84, 0.50), smoothstep(4.0, 13.0, depth));
+    albedo = mix(albedo, coreColor, core * 0.8);
+  } else {
     albedo = mix(vec3(0.62, 0.61, 0.63), vec3(0.84, 0.14, 0.17), paint);
     albedo = mix(albedo, vec3(0.46, 0.45, 0.48), smoothstep(6.0, 26.0, depth) * 0.45);
-    albedo = mix(albedo, vec3(1.0, 0.68, 0.22), core * 0.9);
+    albedo = mix(albedo, coreColor, core * 0.9);
   }
   albedo *= 0.92 + 0.16 * hash31(floor(p * 150.0));
   albedo *= 0.94 + 0.12 * hash31(floor(p * 900.0));
@@ -173,7 +183,7 @@ void main() {
     float veins = pow(max(0.0, 1.0 - abs(noise3(p * 34.0) * 2.0 - 1.0)), 10.0);
     color += glow * glow * vec3(1.35, 0.42, 0.10) * (0.35 + veins * 2.4) * (1.0 + uRush);
   }
-  color += core * vec3(0.85, 0.42, 0.10) * (0.22 + 0.14 * sin(uTime * 4.0));
+  color += core * coreColor * 0.5 * (0.22 + 0.14 * sin(uTime * 4.0));
   color += uRush * vec3(0.10, 0.02, 0.03);
 
   float viewDepth = t * dot(rd, uCamFwd);
@@ -282,6 +292,7 @@ export class WebGLRenderer implements Renderer {
 
   private width = 1;
   private height = 1;
+  private loadedStatue = '';
   private wholeDirty = true;
   private hasBox = false;
   private bx0 = 0;
@@ -313,6 +324,8 @@ export class WebGLRenderer implements Renderer {
       'uRush',
       'uTime',
       'uCenterY',
+      'uCoreRadius',
+      'uStyle',
     ]);
     this.particles = link(gl, PARTICLE_VERT, PARTICLE_FRAG);
     this.particlesU = uniforms(gl, this.particles, CAMERA_UNIFORMS);
@@ -321,22 +334,6 @@ export class WebGLRenderer implements Renderer {
     this.texNow = this.makeVolume(gl.LINEAR);
     this.texMeta = this.makeVolume(gl.NEAREST);
     this.texCoarse = this.makeCoarse();
-
-    const shape = getStatueShape();
-    gl.bindTexture(gl.TEXTURE_3D, this.texMeta);
-    gl.texSubImage3D(
-      gl.TEXTURE_3D,
-      0,
-      0,
-      0,
-      0,
-      GRID,
-      GRID,
-      GRID,
-      gl.RED,
-      gl.UNSIGNED_BYTE,
-      shape.material,
-    );
 
     const vao = gl.createVertexArray();
     if (!vao) throw new Error('描画設定を作成できません');
@@ -462,10 +459,10 @@ export class WebGLRenderer implements Renderer {
     gl.clearDepth(1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
+    this.uploadStatue(view.statueId);
     this.uploadVolume(view.density);
     this.uploadCoarse(view.blockRemaining);
 
-    const shape = getStatueShape();
     const shakeX = (fx.shakeX / this.width) * 2;
     const shakeY = (-fx.shakeY / this.height) * 2;
     const tanX = camera.tanHalf * camera.aspect * fx.zoom;
@@ -483,7 +480,9 @@ export class WebGLRenderer implements Renderer {
     gl.uniform4fv(this.statueU['uGlow[0]']!, fx.glowPoints);
     gl.uniform1f(this.statueU.uRush!, fx.rushGlow);
     gl.uniform1f(this.statueU.uTime!, frame.time);
-    gl.uniform1f(this.statueU.uCenterY!, shape.centerY);
+    gl.uniform1f(this.statueU.uCenterY!, view.statueCenterY);
+    gl.uniform1f(this.statueU.uCoreRadius!, view.statueCoreRadius);
+    gl.uniform1i(this.statueU.uStyle!, view.statueStyle);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_3D, this.texNow);
     gl.activeTexture(gl.TEXTURE1);
@@ -523,6 +522,29 @@ export class WebGLRenderer implements Renderer {
     gl.uniform3f(map.uCamFwd!, camera.fx, camera.fy, camera.fz);
     gl.uniform2f(map.uTan!, tanX, tanY);
     gl.uniform2f(map.uShake!, shakeX, shakeY);
+  }
+
+  /** 石像が入れ替わったら、材質と深さの表を送り直す */
+  private uploadStatue(statueId: string): void {
+    if (this.loadedStatue === statueId) return;
+    const gl = this.gl;
+    const shape = getStatue(statueId);
+    gl.bindTexture(gl.TEXTURE_3D, this.texMeta);
+    gl.texSubImage3D(
+      gl.TEXTURE_3D,
+      0,
+      0,
+      0,
+      0,
+      GRID,
+      GRID,
+      GRID,
+      gl.RED,
+      gl.UNSIGNED_BYTE,
+      shape.material,
+    );
+    this.loadedStatue = statueId;
+    this.wholeDirty = true;
   }
 
   private uploadVolume(data: Uint8Array): void {

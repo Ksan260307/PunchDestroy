@@ -12,6 +12,7 @@ function need<T extends HTMLElement>(id: string): T {
 }
 
 export interface ResultStats {
+  statueName: string;
   seconds: number;
   hits: number;
   attempts: number;
@@ -35,8 +36,6 @@ export class Hud {
   private readonly chargeFill = need('charge-fill');
   private readonly rush = need('rush');
   private readonly rushFill = need('rush-fill');
-  private readonly barrage = need('barrage');
-  private readonly barrageFill = need('barrage-fill');
   private readonly zoomLabel = need('zoom-label');
   private readonly replayBadge = need('replay-badge');
   private readonly titleScreen = need('title');
@@ -44,12 +43,12 @@ export class Hud {
   private readonly recordBadge = need('record-badge');
   private readonly bestLine = need('best-line');
   private readonly bestScore = need('best-score');
+  private readonly picker = need('picker');
 
   private shownGrains = 0;
   private shownScore = 0;
   private lastCombo = -1;
   private lastRush = -1;
-  private lastBarrage = -1;
   private lastZoom = -1;
 
   reset(view: WorldView): void {
@@ -57,10 +56,8 @@ export class Hud {
     this.shownScore = 0;
     this.lastCombo = -1;
     this.lastRush = -1;
-    this.lastBarrage = -1;
     this.comboChip.classList.add('hidden');
     this.rush.classList.add('hidden');
-    this.barrage.classList.add('hidden');
   }
 
   setVisible(value: boolean): void {
@@ -97,6 +94,35 @@ export class Hud {
 
   setStats(text: string): void {
     this.stats.textContent = text;
+  }
+
+  /** タイトルに「何を壊すか」の選び口を組み立てる */
+  buildPicker(
+    choices: Array<{ id: string; name: string }>,
+    selected: string,
+    onSelect: (id: string) => void,
+  ): void {
+    this.picker.textContent = '';
+    for (const choice of choices) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'pick';
+      button.dataset.statue = choice.id;
+      button.setAttribute('role', 'radio');
+      button.setAttribute('aria-checked', String(choice.id === selected));
+      button.textContent = choice.name;
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        onSelect(choice.id);
+      });
+      this.picker.appendChild(button);
+    }
+  }
+
+  setSelectedStatue(id: string): void {
+    for (const button of this.picker.querySelectorAll<HTMLButtonElement>('.pick')) {
+      button.setAttribute('aria-checked', String(button.dataset.statue === id));
+    }
   }
 
   /** タイトル画面に自己ベストを出す */
@@ -142,20 +168,12 @@ export class Hud {
       this.rushFill.style.width = `${rushLeft}%`;
       this.lastRush = rushLeft;
     }
-
-    // 乱打中は残り、そうでなければ入るまでの溜まり具合を出す
-    const hot = view.barrage;
-    const barrage = Math.round((hot ? view.barrageLeft : view.barrageCharge) * 100);
-    if (barrage !== this.lastBarrage) {
-      this.barrage.classList.toggle('hidden', barrage <= 0);
-      this.barrage.classList.toggle('hot', hot);
-      this.barrageFill.style.width = `${barrage}%`;
-      this.lastBarrage = barrage;
-    }
   }
 
   showResult(stats: ResultStats): void {
-    need('result-title').textContent = stats.cleared ? '完全破壊！' : 'ここまで';
+    need('result-title').textContent = stats.cleared
+      ? `${stats.statueName} 完全破壊！`
+      : 'ここまで';
     need('r-time').textContent = `${stats.seconds.toFixed(1)}秒`;
     need('r-hits').textContent = `${stats.hits.toLocaleString('ja-JP')}回`;
     need('r-combo').textContent = `${stats.bestCombo}`;

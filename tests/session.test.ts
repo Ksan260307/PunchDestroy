@@ -80,7 +80,14 @@ describe('記録と再現', () => {
   it('記録の中身は操作の並びだけで、状態を持たない', () => {
     const session = shortPlay(5);
     const record = session.toRecord();
-    expect(Object.keys(record).sort()).toEqual(['digest', 'hits', 'seed', 'signature', 'steps']);
+    expect(Object.keys(record).sort()).toEqual([
+      'digest',
+      'hits',
+      'seed',
+      'signature',
+      'statue',
+      'steps',
+    ]);
     expect(record.hits.length % 5).toBe(0);
     expect(record.hits.length / 5).toBe(session.hitLogLength);
   });
@@ -89,6 +96,50 @@ describe('記録と再現', () => {
     const session = shortPlay(64);
     const restored = decodeRecord(encodeRecord(session.toRecord()));
     expect(worldFingerprint(replay(restored))).toBe(worldFingerprint(session.world));
+  });
+});
+
+describe('石像ごとの記録', () => {
+  it('どの石像を壊したかが記録に残る', () => {
+    const melon = new Session(1, 'melon');
+    playScript(melon, { every: 6, maxSteps: 120, seed: 1 });
+    const record = melon.toRecord();
+    expect(record.statue).toBe('melon');
+    expect(record.signature).toBe(currentSignature('melon'));
+    expect(record.signature).not.toBe(currentSignature('apple'));
+  });
+
+  it('メロンの記録もそのまま作り直せる', () => {
+    const melon = new Session(31, 'melon');
+    playScript(melon, { every: 5, maxSteps: 220, seed: 31 });
+    const rebuilt = replay(melon.toRecord());
+    expect(rebuilt.statue.id).toBe('melon');
+    expect(worldFingerprint(rebuilt)).toBe(worldFingerprint(melon.world));
+  });
+
+  it('石像を偽った記録は拒否する', () => {
+    const melon = new Session(7, 'melon');
+    playScript(melon, { every: 6, maxSteps: 120, seed: 7 });
+    const record = melon.toRecord();
+    expect(() => replay({ ...record, statue: 'apple' })).toThrow(ReplayRejected);
+  });
+
+  it('同じ操作でも石像が違えば結果は違う', () => {
+    const apple = new Session(5, 'apple');
+    const melon = new Session(5, 'melon');
+    for (let i = 0; i < 40; i++) {
+      apple.queueHit(C, C, C + 10);
+      melon.queueHit(C, C, C + 10);
+      apple.advance();
+      melon.advance();
+    }
+    expect(worldFingerprint(melon.world)).not.toBe(worldFingerprint(apple.world));
+  });
+
+  it('知らない石像の名前は既定のものとして扱う', () => {
+    const session = new Session(1, 'しらないもの');
+    expect(session.statueId).toBe('apple');
+    expect(session.toRecord().statue).toBe('apple');
   });
 });
 

@@ -17,7 +17,7 @@ import {
 import { GRID, HIT_JAB } from '../src/core/constants';
 import { advance } from '../src/core/rules';
 import { createWorld } from '../src/core/world';
-import { getStatueShape } from '../src/core/shape';
+import { getStatue } from '../src/core/shape';
 
 const C = GRID / 2;
 
@@ -115,16 +115,16 @@ describe('状態の指紋', () => {
 
 describe('形の指紋', () => {
   it('同じ形なら同じ', () => {
-    const shape = getStatueShape();
+    const shape = getStatue();
     expect(shapeFingerprint(shape.density, shape.material)).toBe(
       shapeFingerprint(shape.density, shape.material),
     );
   });
 
   it('1マスでも違えば変わる', () => {
-    const shape = getStatueShape();
+    const shape = getStatue();
     const changed = shape.density.slice();
-    const index = changed.findIndex((value) => value > 1);
+    const index = changed.findIndex((value: number) => value > 1);
     changed[index] -= 1;
     expect(shapeFingerprint(changed, shape.material)).not.toBe(
       shapeFingerprint(shape.density, shape.material),
@@ -132,11 +132,19 @@ describe('形の指紋', () => {
   });
 
   it('材質だけ違っても変わる', () => {
-    const shape = getStatueShape();
+    const shape = getStatue();
     const changed = shape.material.slice();
     changed[changed.length - 1] ^= 1;
     expect(shapeFingerprint(shape.density, changed)).not.toBe(
       shapeFingerprint(shape.density, shape.material),
+    );
+  });
+
+  it('石像が違えば別の指紋', () => {
+    const apple = getStatue('apple');
+    const melon = getStatue('melon');
+    expect(shapeFingerprint(melon.density, melon.material)).not.toBe(
+      shapeFingerprint(apple.density, apple.material),
     );
   });
 });

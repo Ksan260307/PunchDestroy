@@ -19,6 +19,14 @@ import {
 } from './world';
 
 export interface WorldView {
+  /** どの石像か */
+  readonly statueId: string;
+  readonly statueName: string;
+  /** 描き方の系統（色づかいの選択に使う） */
+  readonly statueStyle: number;
+  readonly statueCenterY: number;
+  readonly statueCoreRadius: number;
+  /** マスごとの材質と深さ（形ごとに変わらない） */
   readonly step: number;
   readonly density: Uint8Array;
   readonly origin: Uint8Array;
@@ -53,6 +61,21 @@ export interface WorldView {
 
 export function createView(world: World): WorldView {
   return Object.freeze({
+    get statueId() {
+      return world.statue.id;
+    },
+    get statueName() {
+      return world.statue.spec.name;
+    },
+    get statueStyle() {
+      return world.statue.spec.style;
+    },
+    get statueCenterY() {
+      return world.statue.centerY;
+    },
+    get statueCoreRadius() {
+      return world.statue.spec.coreRadius;
+    },
     get step() {
       return world.step;
     },
