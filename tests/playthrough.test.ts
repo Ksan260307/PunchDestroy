@@ -63,3 +63,33 @@ describe('通しプレイ', () => {
     expect(again.world.bestCombo).toBe(world.bestCombo);
   });
 });
+
+describe.each([
+  ['りんご', 'apple'],
+  ['メロン', 'melon'],
+  ['ぶどう', 'grape'],
+])('%s も通しで壊せる', (_name, id) => {
+  const session = new Session(4242, id);
+  const steps = playScript(session, { every: 10, seed: 4242 });
+
+  it('最後まで壊しきれる', () => {
+    expect(session.world.statue.id).toBe(id);
+    expect(session.world.remainingUnits).toBe(0);
+    expect(grainsRemaining(session.world)).toBe(0);
+  });
+
+  it('遊べる長さに収まっている', () => {
+    const seconds = steps / STEPS_PER_SECOND;
+    expect(seconds).toBeGreaterThan(15);
+    expect(seconds).toBeLessThan(240);
+  });
+
+  it('殴る回数が形によって極端に偏らない', () => {
+    expect(session.world.hitCount).toBeGreaterThan(60);
+    expect(session.world.hitCount).toBeLessThan(400);
+  });
+
+  it('記録から完全に作り直せる', () => {
+    expect(worldFingerprint(replay(session.toRecord()))).toBe(worldFingerprint(session.world));
+  });
+});

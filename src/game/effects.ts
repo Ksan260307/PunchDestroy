@@ -9,7 +9,7 @@
 import { GRID, MATERIAL_LEAF, MATERIAL_STEM } from '../core/constants';
 import { DisplayRandom } from '../core/random';
 import type { StepReport } from '../core/rules';
-import { materialKind, onNet, STYLE_MELON, surfaceDepth } from '../core/shape';
+import { materialKind, onNet, STYLE_GRAPE, STYLE_MELON, surfaceDepth } from '../core/shape';
 import type { WorldView } from '../core/view';
 import { blockBounds, toUnit } from '../core/world';
 
@@ -256,6 +256,12 @@ export class EffectSystem {
     if (kind === MATERIAL_LEAF) return [0.3, 0.6, 0.24];
     const depth = surfaceDepth(packed);
     const radius = Math.hypot(toUnit(x), toUnit(y) - view.statueCenterY, toUnit(z));
+    if (view.statueStyle === STYLE_GRAPE) {
+      if (depth <= 1) return [0.66, 0.58, 0.76];
+      if (depth <= 3) return [0.3, 0.13, 0.4];
+      if (radius < view.statueCoreRadius) return [0.96, 0.62, 0.78];
+      return [0.88, 0.9, 0.74];
+    }
     if (view.statueStyle === STYLE_MELON) {
       if (depth <= 2) return onNet(packed) ? [0.8, 0.79, 0.62] : [0.46, 0.56, 0.27];
       if (depth <= 5) return [0.86, 0.87, 0.72];

@@ -26,6 +26,7 @@ export type Vec3 = [number, number, number];
 /** 描き方の系統。色づかいを選ぶのに使う */
 export const STYLE_APPLE = 0;
 export const STYLE_MELON = 1;
+export const STYLE_GRAPE = 2;
 
 /** 軸（へた）の指定 */
 export interface StemSpec {
@@ -61,6 +62,30 @@ export interface DentSpec {
   height: number;
 }
 
+/** 房（たくさんの粒の集まり）の指定 */
+export interface BunchSpec {
+  /** 房のいちばん上と下 */
+  topY: number;
+  bottomY: number;
+  /** いちばん太いところの半径 */
+  spread: number;
+  /** 粒の大きさ（上と下） */
+  topRadius: number;
+  bottomRadius: number;
+  /** 段の数 */
+  levels: number;
+  /** 位置の散らばり */
+  jitter: number;
+}
+
+/** 房を組む1粒 */
+export interface Berry {
+  x: number;
+  y: number;
+  z: number;
+  r: number;
+}
+
 export interface StatueSpec {
   readonly id: string;
   readonly name: string;
@@ -74,12 +99,20 @@ export interface StatueSpec {
   readonly lobes: number;
   readonly lobeDepth: number;
   readonly dents: DentSpec[];
+  /** 房で作る場合の指定。これがあるときは輪郭ではなく粒の集まりで形を作る */
+  readonly bunch?: BunchSpec;
   /** 軸（へた）。複数つなげると T 字などにできる */
   readonly stems?: StemSpec[];
   readonly leaf?: LeafSpec;
   readonly net?: NetSpec;
   /** 中心の「芯」の大きさ */
   readonly coreRadius: number;
+  /**
+   * この石像を殴るときの範囲と威力の倍率（%）。
+   * 中身の量やすき間の多さが形ごとに違うので、遊ぶ長さをここでそろえる。
+   */
+  readonly hitScale?: number;
+  readonly hitPowerScale?: number;
 }
 
 export interface StatueShape {
@@ -170,7 +203,39 @@ export const MELON: StatueSpec = {
   coreRadius: 0.42,
 };
 
-export const STATUES: StatueSpec[] = [APPLE, MELON];
+/** ぶどう。粒の集まった房。皮は紫、中は淡い果肉 */
+export const GRAPE: StatueSpec = {
+  id: 'grape',
+  name: 'ぶどう',
+  style: STYLE_GRAPE,
+  profile: [],
+  bottom: -0.86,
+  top: 0.5,
+  scale: 1,
+  lobes: 0,
+  lobeDepth: 0,
+  dents: [],
+  bunch: {
+    topY: 0.5,
+    bottomY: -0.86,
+    spread: 0.52,
+    topRadius: 0.118,
+    bottomRadius: 0.086,
+    levels: 9,
+    jitter: 0.028,
+  },
+  // T 字のへた
+  stems: [
+    { a: [0, 0.36, 0], b: [0.004, 0.9, -0.004], radius: 0.036 },
+    { a: [-0.11, 0.905, 0.01], b: [0.11, 0.915, -0.01], radius: 0.03 },
+  ],
+  coreRadius: 0.36,
+  // 房はすき間が多く、1発が空を切りやすい。範囲は少し狭め、そのぶん深く抜く
+  hitScale: 88,
+  hitPowerScale: 210,
+};
+
+export const STATUES: StatueSpec[] = [APPLE, MELON, GRAPE];
 export const DEFAULT_STATUE = APPLE.id;
 
 export function findSpec(id: string): StatueSpec {
@@ -275,6 +340,98 @@ function netRidge(spec: NetSpec, x: number, y: number, z: number): number {
   return t * t * (3 - 2 * t);
 }
 
+/**
+ * 房の粒を並べる。外周・内周・中心の柱の3つで組むので、
+ * 見た目は粒の集まりでも、中身はきちんと詰まる。
+ */
+export function layoutBerries(bunch: BunchSpec): Berry[] {
+  const list: Berry[] = [];
+  const span = bunch.topY - bunch.bottomY;
+  let seed = 0;
+  const wobble = (): number => {
+    seed++;
+    return ((hash2(seed, 0x5f3a) & 1023) / 1023 - 0.5) * bunch.jitter;
+  };
+  const radiusAt = (t: number): number =>
+    bunch.topRadius + (bunch.bottomRadius - bunch.topRadius) * t;
+
+  // 中心の柱。房の中身を詰めて、途切れないようにする
+  const step = bunch.topRadius * 0.62;
+  for (let y = bunch.bottomY + step; y <= bunch.topY; y += step) {
+    const t = (bunch.topY - y) / span;
+    list.push({ x: wobble(), y: y + wobble(), z: wobble(), r: radiusAt(t) });
+  }
+
+  for (let level = 0; level < bunch.levels; level++) {
+    const t = bunch.levels > 1 ? level / (bunch.levels - 1) : 0;
+    const y = bunch.topY - t * span;
+    const radius = radiusAt(t);
+    const ring = bunch.spread * Math.pow(1 - 0.94 * t, 0.7);
+    if (ring < radius * 0.6) continue;
+
+    const count = Math.max(3, Math.round((2 * Math.PI * ring) / (radius * 1.75)));
+    for (let i = 0; i < count; i++) {
+      const angle = (2 * Math.PI * i) / count + level * 0.7;
+      const reach = ring + wobble();
+      list.push({
+        x: Math.cos(angle) * reach + wobble(),
+        y: y + wobble(),
+        z: Math.sin(angle) * reach + wobble(),
+        r: radius,
+      });
+    }
+
+    const inner = ring * 0.5;
+    if (inner <= radius * 0.8) continue;
+    const innerCount = Math.max(2, Math.round(count / 2));
+    for (let i = 0; i < innerCount; i++) {
+      const angle = (2 * Math.PI * i) / innerCount + level * 1.3;
+      list.push({
+        x: Math.cos(angle) * inner + wobble(),
+        y: y + wobble(),
+        z: Math.sin(angle) * inner + wobble(),
+        r: radius,
+      });
+    }
+  }
+  return list;
+}
+
+/** 房の形をマスごとの値にしておく。粒ごとに囲みの中だけ回すので速い */
+const BERRY_SCALE = 8192;
+
+function buildBunchField(berries: Berry[]): Int16Array {
+  const field = new Int16Array(VOXEL_COUNT).fill(-32768);
+  const half = GRID / 2;
+  const toVoxel = (unit: number): number => (unit + 1) * half;
+
+  for (const berry of berries) {
+    const minX = Math.max(0, Math.floor(toVoxel(berry.x - berry.r)));
+    const maxX = Math.min(GRID - 1, Math.ceil(toVoxel(berry.x + berry.r)));
+    const minY = Math.max(0, Math.floor(toVoxel(berry.y - berry.r)));
+    const maxY = Math.min(GRID - 1, Math.ceil(toVoxel(berry.y + berry.r)));
+    const minZ = Math.max(0, Math.floor(toVoxel(berry.z - berry.r)));
+    const maxZ = Math.min(GRID - 1, Math.ceil(toVoxel(berry.z + berry.r)));
+
+    for (let z = minZ; z <= maxZ; z++) {
+      const dz = voxelToUnit(z) - berry.z;
+      for (let y = minY; y <= maxY; y++) {
+        const dy = voxelToUnit(y) - berry.y;
+        const row = (z * GRID + y) * GRID;
+        for (let x = minX; x <= maxX; x++) {
+          const dx = voxelToUnit(x) - berry.x;
+          const value = berry.r - Math.sqrt(dx * dx + dy * dy + dz * dz);
+          if (value <= 0) continue;
+          const packed = Math.round(value * BERRY_SCALE);
+          const index = row + x;
+          if (packed > field[index]) field[index] = packed;
+        }
+      }
+    }
+  }
+  return field;
+}
+
 export function buildStatue(spec: StatueSpec): StatueShape {
   const density = new Uint8Array(VOXEL_COUNT);
   const material = new Uint8Array(VOXEL_COUNT);
@@ -297,6 +454,7 @@ export function buildStatue(spec: StatueSpec): StatueShape {
   const net = spec.net;
   // 網目を調べるのは表面の近くだけでよい
   const netBand = net ? net.height * 3 + 0.05 : 0;
+  const bunchField = spec.bunch ? buildBunchField(layoutBerries(spec.bunch)) : null;
 
   let totalUnits = 0;
   let filledCells = 0;
@@ -315,8 +473,11 @@ export function buildStatue(spec: StatueSpec): StatueShape {
         const nx = unit[x];
         const r = radial[rowRadial + x];
 
-        // 本体（縦のふくらみを乗せる）
-        let field = bodyRadius * lobe[rowRadial + x] - r;
+        const index = base + x;
+        // 本体。房で作る形は粒の集まり、そうでなければ回転体
+        let field = bunchField
+          ? bunchField[index] / BERRY_SCALE
+          : bodyRadius * lobe[rowRadial + x] - r;
         let kind = MATERIAL_BODY;
         let onRidge = false;
 
@@ -327,8 +488,8 @@ export function buildStatue(spec: StatueSpec): StatueShape {
           field += net.height * ridge;
         }
 
-        // へこみを引く
-        for (let d = 0; d < spec.dents.length; d++) {
+        // へこみを引く（房で作る形には使わない）
+        for (let d = 0; d < spec.dents.length && !bunchField; d++) {
           const dent = spec.dents[d];
           const t = (ny - dent.y) / dent.height;
           const inside = 1 - t * t;
@@ -385,7 +546,6 @@ export function buildStatue(spec: StatueSpec): StatueShape {
         if (depth < 0) depth = 0;
         else if (depth > MAX_PACKED_DEPTH) depth = MAX_PACKED_DEPTH;
 
-        const index = base + x;
         density[index] = amount;
         material[index] = kind | (depth << 2) | (onRidge ? NET_BIT : 0);
         totalUnits += amount;

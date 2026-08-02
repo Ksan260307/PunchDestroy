@@ -121,6 +121,15 @@ export function hitParams(world: World, kind: number): HitParams {
   let power = kind === HIT_SMASH ? SMASH_POWER : JAB_POWER;
   radius += (boost / 24) | 0;
   power += boost * 4;
+  // 石像ごとの当たりの広さと深さ（中身の量に合わせて遊ぶ長さをそろえる）
+  const spec = world.statue.spec;
+  const scale = spec.hitScale ?? 100;
+  if (scale !== 100) {
+    radius = ((radius * scale) / 100) | 0;
+    if (radius < 2) radius = 2;
+  }
+  const powerScale = spec.hitPowerScale ?? 100;
+  if (powerScale !== 100) power = ((power * powerScale) / 100) | 0;
   let sharpness = 0;
   if (isRush(world)) {
     radius *= RUSH_RADIUS_SCALE;

@@ -4,25 +4,30 @@ import {
   MATERIAL_BODY,
   MATERIAL_LEAF,
   MATERIAL_STEM,
+  HIT_JAB,
   TOTAL_GRAINS,
   VOXEL_COUNT,
 } from '../src/core/constants';
 import {
   APPLE,
   DEFAULT_STATUE,
+  GRAPE,
   MELON,
   STATUES,
   STYLE_APPLE,
+  STYLE_GRAPE,
   STYLE_MELON,
   buildStatue,
   findSpec,
   getStatue,
+  layoutBerries,
   materialKind,
   onNet,
   surfaceDepth,
   type StatueShape,
 } from '../src/core/shape';
 import { shapeFingerprint } from '../src/core/fingerprint';
+import { hitParams } from '../src/core/rules';
 import { createWorld, grainsRemaining, destroyedRatio, voxelIndex } from '../src/core/world';
 
 function densityAt(shape: StatueShape, x: number, y: number, z: number): number {
@@ -89,11 +94,13 @@ describe('石像の並び', () => {
 describe.each([
   ['りんご', 'apple'],
   ['メロン', 'melon'],
+  ['ぶどう', 'grape'],
 ])('%s の形', (_name, id) => {
   const shape = getStatue(id);
 
   it('中身のあるマスがそれなりの数ある', () => {
-    expect(shape.filledCells).toBeGreaterThan(VOXEL_COUNT * 0.15);
+    // 房のように隙間の多い形もあるので幅は広めに見る
+    expect(shape.filledCells).toBeGreaterThan(VOXEL_COUNT * 0.06);
     expect(shape.filledCells).toBeLessThan(VOXEL_COUNT * 0.5);
   });
 
@@ -107,7 +114,8 @@ describe.each([
     const c = GRID / 2;
     expect(densityAt(shape, c, c, c)).toBeGreaterThan(200);
     expect(kindAt(shape, c, c, c)).toBe(MATERIAL_BODY);
-    expect(surfaceDepth(shape.material[voxelIndex(c, c, c)])).toBeGreaterThan(20);
+    // 表面ではなく、きちんと内側にあること（粒の集まりは1粒ぶんの厚みしかない）
+    expect(surfaceDepth(shape.material[voxelIndex(c, c, c)])).toBeGreaterThan(3);
   });
 
   it('本体と軸がある', () => {
@@ -115,22 +123,6 @@ describe.each([
     for (let i = 0; i < VOXEL_COUNT; i += 7) kinds.add(materialKind(shape.material[i]));
     expect(kinds.has(MATERIAL_BODY)).toBe(true);
     expect(kinds.has(MATERIAL_STEM)).toBe(true);
-  });
-
-  it('上下に向かうほど細い', () => {
-    const middle = widthAtHeight(shape, Math.round(GRID * 0.45));
-    const shoulder = widthAtHeight(shape, Math.round(GRID * 0.8));
-    const bottom = widthAtHeight(shape, Math.round(GRID * 0.2));
-    expect(middle).toBeGreaterThan(shoulder);
-    expect(middle).toBeGreaterThan(bottom);
-    expect(bottom).toBeGreaterThan(0);
-  });
-
-  it('上面はくぼんでいて、とがっていない', () => {
-    const axis = topOfAxis(shape);
-    const rim = topOfAxis(shape, Math.round(GRID * 0.18));
-    expect(axis).toBeGreaterThan(0);
-    expect(rim).toBeGreaterThan(axis);
   });
 
   it('何度作っても同じものになる', () => {
@@ -155,6 +147,29 @@ describe.each([
     world.remainingUnits = 0;
     expect(grainsRemaining(world)).toBe(0);
     expect(destroyedRatio(world)).toBe(1);
+  });
+});
+
+describe.each([
+  ['りんご', 'apple'],
+  ['メロン', 'melon'],
+])('%s の輪郭', (_name, id) => {
+  const shape = getStatue(id);
+
+  it('上下に向かうほど細い', () => {
+    const middle = widthAtHeight(shape, Math.round(GRID * 0.45));
+    const shoulder = widthAtHeight(shape, Math.round(GRID * 0.8));
+    const bottom = widthAtHeight(shape, Math.round(GRID * 0.2));
+    expect(middle).toBeGreaterThan(shoulder);
+    expect(middle).toBeGreaterThan(bottom);
+    expect(bottom).toBeGreaterThan(0);
+  });
+
+  it('上面はくぼんでいて、とがっていない', () => {
+    const axis = topOfAxis(shape);
+    const rim = topOfAxis(shape, Math.round(GRID * 0.18));
+    expect(axis).toBeGreaterThan(0);
+    expect(rim).toBeGreaterThan(axis);
   });
 });
 
@@ -244,5 +259,70 @@ describe('メロンならではのところ', () => {
     for (let x = c - 20; x <= c + 20; x++) {
       expect(densityAt(melon, x, c, c)).toBeGreaterThan(200);
     }
+  });
+});
+
+describe('ぶどうならではのところ', () => {
+  const grape = getStatue('grape');
+
+  it('描き方はぶどうの系統で、房で作られている', () => {
+    expect(grape.spec.style).toBe(STYLE_GRAPE);
+    expect(GRAPE.bunch).toBeDefined();
+    expect(GRAPE.net).toBeUndefined();
+    expect(GRAPE.leaf).toBeUndefined();
+  });
+
+  it('粒がたくさん並ぶ', () => {
+    const berries = layoutBerries(GRAPE.bunch!);
+    expect(berries.length).toBeGreaterThan(40);
+    for (const berry of berries) {
+      expect(berry.r).toBeGreaterThan(0);
+      expect(Math.hypot(berry.x, berry.z)).toBeLessThanOrEqual(GRAPE.bunch!.spread + 0.1);
+      expect(berry.y).toBeLessThanOrEqual(GRAPE.bunch!.topY + 0.1);
+      expect(berry.y).toBeGreaterThanOrEqual(GRAPE.bunch!.bottomY - 0.1);
+    }
+  });
+
+  it('粒の並びは毎回同じ', () => {
+    const a = layoutBerries(GRAPE.bunch!);
+    const b = layoutBerries(GRAPE.bunch!);
+    expect(b.map((berry) => `${berry.x},${berry.y},${berry.z},${berry.r}`)).toEqual(
+      a.map((berry) => `${berry.x},${berry.y},${berry.z},${berry.r}`),
+    );
+  });
+
+  it('上へ行くほど広く、下はすぼまる', () => {
+    const upper = widthAtHeight(grape, Math.round(GRID * 0.62));
+    const lower = widthAtHeight(grape, Math.round(GRID * 0.2));
+    expect(upper).toBeGreaterThan(lower);
+    expect(lower).toBeGreaterThan(0);
+  });
+
+  it('横から見ると粒の切れ目がある', () => {
+    // 房の縁を縦になぞると、粒と粒のすきまで途切れる
+    const c = GRID / 2;
+    const x = c + Math.round(GRID * 0.16);
+    let runs = 0;
+    let inside = false;
+    for (let y = 20; y < GRID - 20; y++) {
+      const solid = densityAt(grape, x, y, c) > 128;
+      if (solid && !inside) runs++;
+      inside = solid;
+    }
+    expect(runs).toBeGreaterThan(1);
+  });
+
+  it('殴る範囲がほかより狭い（中身が少ないぶん）', () => {
+    expect(GRAPE.hitScale).toBeLessThan(100);
+    const world = createWorld(1, 'grape');
+    const apple = createWorld(1, 'apple');
+    expect(hitParams(world, HIT_JAB).radius).toBeLessThan(hitParams(apple, HIT_JAB).radius);
+  });
+
+  it('ラッシュの3倍は房でも変わらない', () => {
+    const world = createWorld(1, 'grape');
+    const normal = hitParams(world, HIT_JAB).radius;
+    world.rushUntilStep = world.step + 10;
+    expect(hitParams(world, HIT_JAB).radius).toBe(normal * 3);
   });
 });

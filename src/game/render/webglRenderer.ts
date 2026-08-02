@@ -139,7 +139,9 @@ void main() {
   float paint = 1.0 - smoothstep(2.6, 6.5, depth);
   float coreDist = length(p - vec3(0.0, uCenterY, 0.0));
   float core = smoothstep(uCoreRadius, uCoreRadius * 0.42, coreDist);
-  vec3 coreColor = uStyle == 1 ? vec3(0.88, 0.92, 0.68) : vec3(1.0, 0.68, 0.22);
+  vec3 coreColor = vec3(1.0, 0.68, 0.22);
+  if (uStyle == 1) coreColor = vec3(0.88, 0.92, 0.68);
+  else if (uStyle == 2) coreColor = vec3(0.96, 0.62, 0.78);
 
   vec3 albedo;
   if (kind == 2u) albedo = vec3(0.46, 0.33, 0.20);
@@ -150,6 +152,12 @@ void main() {
     albedo = mix(vec3(0.86, 0.87, 0.72), skin, paint);
     albedo = mix(albedo, vec3(0.66, 0.84, 0.50), smoothstep(4.0, 13.0, depth));
     albedo = mix(albedo, coreColor, core * 0.8);
+  } else if (uStyle == 2) {
+    // ぶどう：粒ごとに、粉をふいた紫の皮の下から淡い果肉
+    float bloom = (1.0 - smoothstep(0.4, 2.2, depth)) * 0.32;
+    vec3 skin = mix(vec3(0.26, 0.10, 0.36), vec3(0.72, 0.66, 0.80), bloom);
+    albedo = mix(vec3(0.88, 0.90, 0.74), skin, 1.0 - smoothstep(2.0, 3.4, depth));
+    albedo = mix(albedo, coreColor, core * 0.5);
   } else {
     albedo = mix(vec3(0.62, 0.61, 0.63), vec3(0.84, 0.14, 0.17), paint);
     albedo = mix(albedo, vec3(0.46, 0.45, 0.48), smoothstep(6.0, 26.0, depth) * 0.45);
