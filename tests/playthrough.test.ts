@@ -70,6 +70,9 @@ describe.each([
   ['メロン', 'melon'],
   ['キウイ', 'kiwi'],
   ['ぶどう', 'grape'],
+  ['バナナ', 'banana'],
+  ['パイナップル', 'pineapple'],
+  ['さくらんぼ', 'cherry'],
 ])('%s も通しで壊せる', (_name, id) => {
   const session = new Session(4242, id);
   const steps = playScript(session, { every: 10, seed: 4242 });

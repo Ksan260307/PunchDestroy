@@ -147,6 +147,7 @@ void main() {
   else if (uStyle == 2) coreColor = vec3(0.96, 0.62, 0.78);
   else if (uStyle == 3) coreColor = vec3(0.98, 0.95, 0.86);
   else if (uStyle == 4) coreColor = vec3(0.96, 0.95, 0.86);
+  else if (uStyle == 6) coreColor = vec3(0.98, 0.92, 0.66);
 
   vec3 albedo;
   if (kind == 2u) albedo = vec3(0.46, 0.33, 0.20);
@@ -180,6 +181,22 @@ void main() {
     albedo = mix(vec3(0.72, 0.62, 0.44), vec3(0.44, 0.32, 0.18), paint);
     albedo = mix(albedo, flesh, smoothstep(3.0, 7.0, depth));
     albedo = mix(albedo, coreColor, core * 0.7);
+  } else if (uStyle == 5) {
+    // バナナ：黄色い皮のすぐ下から白い果肉。ところどころ茶色い斑
+    float spot = smoothstep(0.62, 0.80, noise3(p * 11.0));
+    vec3 peel = mix(vec3(0.96, 0.80, 0.16), vec3(0.44, 0.28, 0.12), spot);
+    albedo = mix(vec3(0.98, 0.95, 0.84), peel, 1.0 - smoothstep(1.8, 3.4, depth));
+  } else if (uStyle == 6) {
+    // パイナップル：うろこの皮。削ると黄色い果肉、中心は白い芯
+    vec3 rindColor = onNet ? vec3(0.62, 0.46, 0.14) : vec3(0.34, 0.28, 0.12);
+    albedo = mix(vec3(0.96, 0.86, 0.42), rindColor, 1.0 - smoothstep(2.6, 5.5, depth));
+    albedo = mix(albedo, vec3(0.98, 0.80, 0.22), smoothstep(5.0, 11.0, depth));
+    albedo = mix(albedo, coreColor, core * 0.55);
+  } else if (uStyle == 7) {
+    // さくらんぼ：つやのある濃い赤。割ると赤い果肉、奥に種
+    float pit = smoothstep(13.0, 17.0, depth);
+    albedo = mix(vec3(0.86, 0.20, 0.22), vec3(0.62, 0.05, 0.11), 1.0 - smoothstep(1.6, 3.2, depth));
+    albedo = mix(albedo, vec3(0.84, 0.74, 0.56), pit);
   } else if (uStyle == 2) {
     // ぶどう：粒ごとに、粉をふいた紫の皮の下から淡い果肉
     float bloom = (1.0 - smoothstep(0.4, 2.2, depth)) * 0.32;

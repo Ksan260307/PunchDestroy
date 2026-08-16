@@ -10,21 +10,29 @@ import {
 } from '../src/core/constants';
 import {
   APPLE,
+  BANANA,
+  CHERRY,
   DEFAULT_STATUE,
   GRAPE,
   KIWI,
   MELON,
   MIKAN,
+  PINEAPPLE,
   STATUES,
   STYLE_APPLE,
+  STYLE_BANANA,
+  STYLE_CHERRY,
   STYLE_GRAPE,
   STYLE_KIWI,
   STYLE_MELON,
   STYLE_ORANGE,
+  STYLE_PINEAPPLE,
   buildStatue,
+  collectSpheres,
   findSpec,
   getStatue,
   layoutBerries,
+  layoutTube,
   materialKind,
   onNet,
   surfaceDepth,
@@ -42,14 +50,45 @@ function kindAt(shape: StatueShape, x: number, y: number, z: number): number {
   return materialKind(shape.material[voxelIndex(x, y, z)]);
 }
 
-/** ある高さでの、中身のあるマスの横幅 */
+/** ある高さでの、本体のマスの横幅（へたや葉は数えない） */
 function widthAtHeight(shape: StatueShape, y: number): number {
   const c = GRID / 2;
   let width = 0;
   for (let x = 0; x < GRID; x++) {
-    if (densityAt(shape, x, y, c) > 128) width++;
+    if (densityAt(shape, x, y, c) > 128 && kindAt(shape, x, y, c) === MATERIAL_BODY) width++;
   }
   return width;
+}
+
+/** 本体のマスがおさまる箱 */
+function bodyBox(shape: StatueShape) {
+  const box = { minX: GRID, maxX: -1, minY: GRID, maxY: -1, minZ: GRID, maxZ: -1 };
+  for (let i = 0; i < VOXEL_COUNT; i++) {
+    if (shape.density[i] <= 128) continue;
+    if (materialKind(shape.material[i]) !== MATERIAL_BODY) continue;
+    const x = i % GRID;
+    const y = ((i / GRID) | 0) % GRID;
+    const z = (i / (GRID * GRID)) | 0;
+    if (x < box.minX) box.minX = x;
+    if (x > box.maxX) box.maxX = x;
+    if (y < box.minY) box.minY = y;
+    if (y > box.maxY) box.maxY = y;
+    if (z < box.minZ) box.minZ = z;
+    if (z > box.maxZ) box.maxZ = z;
+  }
+  return box;
+}
+
+/** 本体のある高さの範囲。形ごとに背丈が違うので、割合で見るために使う */
+function bodySpan(shape: StatueShape): [number, number] {
+  let low = GRID;
+  let high = -1;
+  for (let y = 0; y < GRID; y++) {
+    if (widthAtHeight(shape, y) === 0) continue;
+    if (y < low) low = y;
+    high = y;
+  }
+  return [low, high];
 }
 
 /** 中心軸上で、いちばん高い位置にある本体のマス */
@@ -96,22 +135,28 @@ describe('石像の並び', () => {
   });
 });
 
-/** 輪郭からできている形（房でないもの） */
+/** 輪郭を回して作る形（粒を並べて作る形は含めない） */
 const ROUND_STATUES: Array<[string, string]> = [
   ['りんご', 'apple'],
   ['みかん', 'mikan'],
   ['メロン', 'melon'],
   ['キウイ', 'kiwi'],
+  ['パイナップル', 'pineapple'],
 ];
 
-const ALL_STATUES: Array<[string, string]> = [...ROUND_STATUES, ['ぶどう', 'grape']];
+const ALL_STATUES: Array<[string, string]> = [
+  ...ROUND_STATUES,
+  ['ぶどう', 'grape'],
+  ['バナナ', 'banana'],
+  ['さくらんぼ', 'cherry'],
+];
 
 describe.each(ALL_STATUES)('%s の形', (_name, id) => {
   const shape = getStatue(id);
 
   it('中身のあるマスがそれなりの数ある', () => {
-    // 房のように隙間の多い形もあるので幅は広めに見る
-    expect(shape.filledCells).toBeGreaterThan(VOXEL_COUNT * 0.06);
+    // 房や細長い形もあるので幅は広めに見る
+    expect(shape.filledCells).toBeGreaterThan(VOXEL_COUNT * 0.02);
     expect(shape.filledCells).toBeLessThan(VOXEL_COUNT * 0.5);
   });
 
@@ -121,12 +166,21 @@ describe.each(ALL_STATUES)('%s の形', (_name, id) => {
     expect(densityAt(shape, GRID - 1, 0, GRID - 1)).toBe(0);
   });
 
-  it('中心は詰まっている', () => {
-    const c = GRID / 2;
-    expect(densityAt(shape, c, c, c)).toBeGreaterThan(200);
-    expect(kindAt(shape, c, c, c)).toBe(MATERIAL_BODY);
-    // 表面ではなく、きちんと内側にあること（粒の集まりは1粒ぶんの厚みしかない）
-    expect(surfaceDepth(shape.material[voxelIndex(c, c, c)])).toBeGreaterThan(3);
+  it('中身が詰まっている', () => {
+    // 中心が空いている形（さくらんぼは実と実のあいだ）もあるので、
+    // 中心そのものではなく「内側と呼べるマスがあるか」を見る
+    let solid = 0;
+    let deepest = 0;
+    for (let i = 0; i < VOXEL_COUNT; i++) {
+      if (shape.density[i] <= 200) continue;
+      if (materialKind(shape.material[i]) !== MATERIAL_BODY) continue;
+      solid++;
+      const depth = surfaceDepth(shape.material[i]);
+      if (depth > deepest) deepest = depth;
+    }
+    expect(solid).toBeGreaterThan(VOXEL_COUNT * 0.01);
+    // 表面ではなく、きちんと内側があること
+    expect(deepest).toBeGreaterThan(3);
   });
 
   it('本体と、へたか葉がある', () => {
@@ -165,9 +219,12 @@ describe.each(ROUND_STATUES)('%s の輪郭', (_name, id) => {
   const shape = getStatue(id);
 
   it('上下に向かうほど細い', () => {
-    const middle = widthAtHeight(shape, Math.round(GRID * 0.45));
-    const shoulder = widthAtHeight(shape, Math.round(GRID * 0.8));
-    const bottom = widthAtHeight(shape, Math.round(GRID * 0.22));
+    // 背丈は形ごとに違うので、本体の範囲を割合で見る
+    const [low, high] = bodySpan(shape);
+    const at = (ratio: number) => widthAtHeight(shape, Math.round(low + (high - low) * ratio));
+    const middle = at(0.45);
+    const shoulder = at(0.85);
+    const bottom = at(0.15);
     expect(middle).toBeGreaterThan(shoulder);
     expect(middle).toBeGreaterThan(bottom);
     expect(bottom).toBeGreaterThan(0);
@@ -423,5 +480,192 @@ describe('ぶどうならではのところ', () => {
     const normal = hitParams(world, HIT_JAB).radius;
     world.rushUntilStep = world.step + 10;
     expect(hitParams(world, HIT_JAB).radius).toBe(normal * 3);
+  });
+});
+
+describe('バナナならではのところ', () => {
+  const banana = getStatue('banana');
+
+  it('描き方はバナナの系統で、曲がった筒で作られている', () => {
+    expect(banana.spec.style).toBe(STYLE_BANANA);
+    expect(BANANA.tube).toBeDefined();
+    expect(BANANA.net).toBeUndefined();
+    expect(BANANA.bunch).toBeUndefined();
+  });
+
+  it('筒は弧に沿って並び、両端が細くなる', () => {
+    const parts = layoutTube(BANANA.tube!);
+    expect(parts.length).toBe(BANANA.tube!.samples);
+    const middle = parts[Math.floor(parts.length / 2)];
+    expect(middle.r).toBeGreaterThan(parts[0].r);
+    expect(middle.r).toBeGreaterThan(parts[parts.length - 1].r);
+    for (const part of parts) {
+      // 中心のずれた円弧の上なので、弧の中心からの距離はどれも同じ
+      const distance = Math.hypot(part.x - BANANA.tube!.centerX, part.y - BANANA.tube!.centerY);
+      expect(Math.abs(distance - BANANA.tube!.arcRadius)).toBeLessThan(0.02);
+      expect(part.z).toBe(0);
+    }
+  });
+
+  it('筒の並びは毎回同じ', () => {
+    const a = layoutTube(BANANA.tube!);
+    const b = collectSpheres(BANANA)!;
+    expect(b.map((p) => `${p.x},${p.y},${p.z},${p.r}`)).toEqual(
+      a.map((p) => `${p.x},${p.y},${p.z},${p.r}`),
+    );
+  });
+
+  it('細長い', () => {
+    const box = bodyBox(banana);
+    const height = box.maxY - box.minY;
+    const depth = box.maxZ - box.minZ;
+    expect(height).toBeGreaterThan(depth * 2);
+    expect(box.maxX - box.minX).toBeGreaterThan(depth);
+  });
+
+  it('弓なりに反っている', () => {
+    // 高さごとに本体の左右の真ん中を見ると、中ほどだけ横にふくらむ
+    const meanX = (y: number) => {
+      let sum = 0;
+      let count = 0;
+      for (let x = 0; x < GRID; x++) {
+        for (let z = 0; z < GRID; z++) {
+          if (densityAt(banana, x, y, z) <= 128) continue;
+          if (kindAt(banana, x, y, z) !== MATERIAL_BODY) continue;
+          sum += x;
+          count++;
+        }
+      }
+      return count > 0 ? sum / count : NaN;
+    };
+    const [low, high] = bodySpan(banana);
+    const at = (ratio: number) => meanX(Math.round(low + (high - low) * ratio));
+    const belly = at(0.5);
+    expect(belly).toBeLessThan(at(0.12) - 4);
+    expect(belly).toBeLessThan(at(0.88) - 4);
+  });
+
+  it('上の切り口にへたが付いている', () => {
+    const box = bodyBox(banana);
+    let above = 0;
+    for (let i = 0; i < VOXEL_COUNT; i++) {
+      if (materialKind(banana.material[i]) !== MATERIAL_STEM) continue;
+      if (((i / GRID) | 0) % GRID > box.maxY) above++;
+    }
+    expect(above).toBeGreaterThan(0);
+  });
+});
+
+describe('パイナップルならではのところ', () => {
+  const pineapple = getStatue('pineapple');
+
+  it('描き方はパイナップルの系統で、ななめ格子を持つ', () => {
+    expect(pineapple.spec.style).toBe(STYLE_PINEAPPLE);
+    expect(PINEAPPLE.net?.diamond).toBe(true);
+    expect(PINEAPPLE.stems).toBeUndefined();
+  });
+
+  it('うろこに印が付いていて、印は一部だけ', () => {
+    let marked = 0;
+    let total = 0;
+    for (let i = 0; i < VOXEL_COUNT; i++) {
+      if (pineapple.density[i] === 0) continue;
+      total++;
+      if (onNet(pineapple.material[i])) marked++;
+    }
+    expect(marked).toBeGreaterThan(0);
+    expect(marked).toBeLessThan(total * 0.5);
+  });
+
+  it('葉の冠が本体の上に立っている', () => {
+    expect(PINEAPPLE.leafStems!.length).toBeGreaterThan(10);
+    const box = bodyBox(pineapple);
+    let above = 0;
+    for (let i = 0; i < VOXEL_COUNT; i++) {
+      if (materialKind(pineapple.material[i]) !== MATERIAL_LEAF) continue;
+      if (((i / GRID) | 0) % GRID > box.maxY) above++;
+    }
+    expect(above).toBeGreaterThan(100);
+  });
+
+  it('本体が決められた高さにおさまる（中心軸の上下にごみが出ない）', () => {
+    // ななめ格子は中心軸のまわりで向きが定まらないので、
+    // 本体のない高さまで盛ると軸の上に点が残ってしまう
+    const toVoxel = (world: number) => (world + 1) * 0.5 * GRID;
+    const box = bodyBox(pineapple);
+    expect(box.maxY).toBeLessThanOrEqual(toVoxel(PINEAPPLE.top) + 1);
+    expect(box.minY).toBeGreaterThanOrEqual(toVoxel(PINEAPPLE.bottom) - 1);
+  });
+
+  it('寸胴（胴の太さが上下であまり変わらない）', () => {
+    const [low, high] = bodySpan(pineapple);
+    const at = (ratio: number) => widthAtHeight(pineapple, Math.round(low + (high - low) * ratio));
+    const waist = at(0.5);
+    expect(Math.abs(at(0.35) - waist)).toBeLessThan(waist * 0.12);
+    expect(Math.abs(at(0.65) - waist)).toBeLessThan(waist * 0.12);
+    // キウイのように細長くはない
+    expect(waist).toBeGreaterThan((high - low) * 0.8);
+  });
+});
+
+describe('さくらんぼならではのところ', () => {
+  const cherry = getStatue('cherry');
+
+  it('描き方はさくらんぼの系統で、玉を並べて作られている', () => {
+    expect(cherry.spec.style).toBe(STYLE_CHERRY);
+    expect(CHERRY.spheres!.length).toBe(2);
+    expect(CHERRY.bunch).toBeUndefined();
+    expect(CHERRY.tube).toBeUndefined();
+    expect(CHERRY.net).toBeUndefined();
+  });
+
+  it('玉の並びをそのまま使う', () => {
+    const parts = collectSpheres(CHERRY)!;
+    expect(parts.map((p) => `${p.x},${p.y},${p.z},${p.r}`)).toEqual(
+      CHERRY.spheres!.map((p) => `${p.x},${p.y},${p.z},${p.r}`),
+    );
+    // 元の並びを書き換えないこと
+    parts[0].r = 99;
+    expect(CHERRY.spheres![0].r).not.toBe(99);
+  });
+
+  it('実がふたつ、くびれてつながっている', () => {
+    // 左右に切ったときの断面の大きさを見ると、山がふたつできる
+    const mass = new Array<number>(GRID).fill(0);
+    for (let i = 0; i < VOXEL_COUNT; i++) {
+      if (cherry.density[i] <= 128) continue;
+      if (materialKind(cherry.material[i]) !== MATERIAL_BODY) continue;
+      mass[i % GRID]++;
+    }
+    const half = GRID / 2;
+    const peakOf = (from: number, to: number) => {
+      let best = from;
+      for (let x = from; x < to; x++) if (mass[x] > mass[best]) best = x;
+      return best;
+    };
+    const left = peakOf(0, half);
+    const right = peakOf(half, GRID);
+    let waist = Infinity;
+    for (let x = left + 1; x < right; x++) waist = Math.min(waist, mass[x]);
+    expect(mass[left]).toBeGreaterThan(0);
+    expect(mass[right]).toBeGreaterThan(0);
+    expect(waist).toBeLessThan(Math.min(mass[left], mass[right]) * 0.5);
+  });
+
+  it('柄がY字に伸びて上でひとつになる', () => {
+    expect(CHERRY.stems!.length).toBe(3);
+    const [first, second, trunk] = CHERRY.stems!;
+    // 2本の先が同じところに集まり、そこから1本が上へ伸びる
+    expect(first.b).toEqual(second.b);
+    expect(trunk.a[1]).toBeLessThan(trunk.b[1]);
+    expect(Math.hypot(trunk.a[0] - first.b[0], trunk.a[1] - first.b[1])).toBeLessThan(0.1);
+
+    const box = bodyBox(cherry);
+    let above = 0;
+    for (let i = 0; i < VOXEL_COUNT; i++) {
+      if (materialKind(cherry.material[i]) !== MATERIAL_STEM) continue;
+      if (((i / GRID) | 0) % GRID > box.maxY) above++;
+    }
+    expect(above).toBeGreaterThan(0);
   });
 });

@@ -213,6 +213,9 @@ describe.each([
   ['メロン', 'melon'],
   ['キウイ', 'kiwi'],
   ['ぶどう', 'grape'],
+  ['バナナ', 'banana'],
+  ['パイナップル', 'pineapple'],
+  ['さくらんぼ', 'cherry'],
 ])('%s の見返し再生', (_name, id) => {
   const session = new Session(864, id);
   playScript(session, { every: 5, maxSteps: 240, seed: 864 });

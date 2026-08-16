@@ -9,10 +9,13 @@ import { BLOCKS, GRID, MATERIAL_LEAF, MATERIAL_STEM, SOLID_THRESHOLD } from '../
 import {
   materialKind,
   onNet,
+  STYLE_BANANA,
+  STYLE_CHERRY,
   STYLE_GRAPE,
   STYLE_KIWI,
   STYLE_MELON,
   STYLE_ORANGE,
+  STYLE_PINEAPPLE,
   surfaceDepth,
 } from '../../core/shape';
 import type { OrbitCamera } from '../camera';
@@ -211,6 +214,41 @@ export class CanvasRenderer implements Renderer {
           r = 0.34;
           g = 0.58;
           bl = 0.28;
+        } else if (style === STYLE_BANANA) {
+          if (depth <= 2) {
+            r = 0.96;
+            g = 0.8;
+            bl = 0.16;
+          } else {
+            r = 0.98;
+            g = 0.95;
+            bl = 0.84;
+          }
+        } else if (style === STYLE_PINEAPPLE) {
+          if (depth <= 3) {
+            const scale = onNet(packed);
+            r = scale ? 0.62 : 0.34;
+            g = scale ? 0.46 : 0.28;
+            bl = scale ? 0.14 : 0.12;
+          } else {
+            r = 0.98;
+            g = 0.8;
+            bl = 0.22;
+          }
+        } else if (style === STYLE_CHERRY) {
+          if (depth <= 2) {
+            r = 0.62;
+            g = 0.05;
+            bl = 0.11;
+          } else if (depth > 14) {
+            r = 0.84;
+            g = 0.74;
+            bl = 0.56;
+          } else {
+            r = 0.86;
+            g = 0.2;
+            bl = 0.22;
+          }
         } else if (style === STYLE_ORANGE) {
           if (depth <= 2) {
             r = 0.96;

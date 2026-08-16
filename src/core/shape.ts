@@ -29,6 +29,9 @@ export const STYLE_MELON = 1;
 export const STYLE_GRAPE = 2;
 export const STYLE_ORANGE = 3;
 export const STYLE_KIWI = 4;
+export const STYLE_BANANA = 5;
+export const STYLE_PINEAPPLE = 6;
+export const STYLE_CHERRY = 7;
 
 /** 軸（へた）の指定 */
 export interface StemSpec {
@@ -55,6 +58,27 @@ export interface NetSpec {
   height: number;
   /** 線の太さ（0〜1。大きいほど太い） */
   width: number;
+  /** ななめ格子のうろこにする（パイナップルの皮） */
+  diamond?: boolean;
+  /** 格子の数（周まわり／高さ方向） */
+  columns?: number;
+  rows?: number;
+}
+
+/** 曲がった筒の指定（バナナのような形） */
+export interface TubeSpec {
+  /** 曲がりの中心と半径 */
+  centerX: number;
+  centerY: number;
+  arcRadius: number;
+  /** 角度の範囲（度） */
+  fromDegrees: number;
+  toDegrees: number;
+  /** 端と真ん中の太さ */
+  endRadius: number;
+  midRadius: number;
+  /** いくつの玉でつなぐか */
+  samples: number;
 }
 
 /** 引き算するへこみ（楕円体） */
@@ -103,8 +127,14 @@ export interface StatueSpec {
   readonly dents: DentSpec[];
   /** 房で作る場合の指定。これがあるときは輪郭ではなく粒の集まりで形を作る */
   readonly bunch?: BunchSpec;
+  /** 玉をそのまま並べて作る場合（さくらんぼなど） */
+  readonly spheres?: Berry[];
+  /** 曲がった筒で作る場合（バナナなど） */
+  readonly tube?: TubeSpec;
   /** 軸（へた）。複数つなげると T 字などにできる */
   readonly stems?: StemSpec[];
+  /** 葉としてあつかう軸（パイナップルの冠など） */
+  readonly leafStems?: StemSpec[];
   readonly leaf?: LeafSpec;
   readonly net?: NetSpec;
   /** 中心の「芯」の大きさ */
@@ -291,7 +321,114 @@ export const KIWI: StatueSpec = {
   coreRadius: 0.22,
 };
 
-export const STATUES: StatueSpec[] = [APPLE, MIKAN, MELON, KIWI, GRAPE];
+/** パイナップルの冠。中心から外へ広がる葉を並べる */
+function pineappleCrown(): StemSpec[] {
+  const crown: StemSpec[] = [];
+  const base = 0.42;
+  const rings: Array<[number, number, number, number]> = [
+    // [枚数, 先の高さ, 外へ広がる量, 太さ]
+    [7, 1.02, 0.3, 0.036],
+    [6, 0.86, 0.46, 0.032],
+    [5, 0.7, 0.56, 0.028],
+  ];
+  for (let ring = 0; ring < rings.length; ring++) {
+    const [count, top, spread, radius] = rings[ring];
+    for (let i = 0; i < count; i++) {
+      const angle = (2 * Math.PI * i) / count + ring * 0.55;
+      crown.push({
+        a: [0, base, 0],
+        b: [Math.cos(angle) * spread, top, Math.sin(angle) * spread],
+        radius,
+      });
+    }
+  }
+  return crown;
+}
+
+/** バナナ。曲がった筒。皮の下は白い果肉 */
+export const BANANA: StatueSpec = {
+  id: 'banana',
+  name: 'バナナ',
+  style: STYLE_BANANA,
+  profile: [],
+  bottom: -0.86,
+  top: 0.86,
+  scale: 1,
+  lobes: 0,
+  lobeDepth: 0,
+  dents: [],
+  tube: {
+    centerX: 0.81,
+    centerY: 0,
+    arcRadius: 1.0,
+    fromDegrees: 128,
+    toDegrees: 232,
+    endRadius: 0.05,
+    midRadius: 0.215,
+    samples: 110,
+  },
+  // 上の切り口のへた
+  stems: [{ a: [0.194, 0.76, 0], b: [0.16, 0.94, 0], radius: 0.045 }],
+  coreRadius: 0.03,
+  // 細いぶん空を切りやすいので、当たりは狭めつつ深く抜く
+  hitScale: 76,
+  hitPowerScale: 150,
+};
+
+/** パイナップル。ななめ格子の皮と葉の冠。中は黄色い果肉 */
+export const PINEAPPLE: StatueSpec = {
+  id: 'pineapple',
+  name: 'パイナップル',
+  style: STYLE_PINEAPPLE,
+  profile: [0, 0.76, 0.93, 0.985, 1.0, 1.0, 1.0, 0.985, 0.93, 0.78, 0.4],
+  bottom: -0.78,
+  top: 0.44,
+  scale: 0.58,
+  lobes: 0,
+  lobeDepth: 0,
+  dents: [{ y: 0.44, radius: 0.16, height: 0.08 }],
+  // ななめ格子のうろこ
+  net: { scale: 0, height: 0.03, width: 0.36, diamond: true, columns: 15, rows: 9 },
+  leafStems: pineappleCrown(),
+  coreRadius: 0.2,
+};
+
+/** さくらんぼ。2つの実と、上でつながる細い柄 */
+export const CHERRY: StatueSpec = {
+  id: 'cherry',
+  name: 'さくらんぼ',
+  style: STYLE_CHERRY,
+  profile: [],
+  bottom: -0.78,
+  top: 0.8,
+  scale: 1,
+  lobes: 0,
+  lobeDepth: 0,
+  dents: [],
+  spheres: [
+    { x: -0.31, y: -0.33, z: 0.04, r: 0.34 },
+    { x: 0.33, y: -0.42, z: -0.06, r: 0.31 },
+  ],
+  stems: [
+    { a: [-0.29, -0.08, 0.04], b: [0.01, 0.58, 0], radius: 0.022 },
+    { a: [0.31, -0.18, -0.06], b: [0.01, 0.58, 0], radius: 0.022 },
+    { a: [0.01, 0.55, 0], b: [0.03, 0.79, 0], radius: 0.03 },
+  ],
+  coreRadius: 0.03,
+  hitScale: 80,
+  hitPowerScale: 150,
+};
+
+export const STATUES: StatueSpec[] = [
+  APPLE,
+  MIKAN,
+  MELON,
+  KIWI,
+  GRAPE,
+  BANANA,
+  PINEAPPLE,
+  CHERRY,
+];
 export const DEFAULT_STATUE = APPLE.id;
 
 export function findSpec(id: string): StatueSpec {
@@ -384,8 +521,28 @@ function valueNoise(x: number, y: number, z: number): number {
   return y0 + (y1 - y0) * fz;
 }
 
+function fract(value: number): number {
+  return value - Math.floor(value);
+}
+
+/** ななめ格子のうろこ。溝の上で0、うろこの真ん中で1になる */
+function diamondScale(spec: NetSpec, x: number, y: number, z: number): number {
+  const columns = spec.columns ?? 14;
+  const rows = spec.rows ?? 9;
+  const around = (Math.atan2(z, x) / (2 * Math.PI)) * columns;
+  const along = y * rows;
+  const a = Math.abs(fract(around + along) - 0.5) * 2;
+  const b = Math.abs(fract(around - along) - 0.5) * 2;
+  const edge = Math.min(a, b);
+  const width = spec.width;
+  if (edge >= width) return 1;
+  const t = edge / width;
+  return t * t * (3 - 2 * t);
+}
+
 /** 網目の盛り上がり（0〜1）。筋の上でだけ1に近づく */
 function netRidge(spec: NetSpec, x: number, y: number, z: number): number {
+  if (spec.diamond) return diamondScale(spec, x, y, z);
   const n =
     valueNoise(x * spec.scale, y * spec.scale, z * spec.scale) * 0.65 +
     valueNoise(x * spec.scale * 2.1 + 31.7, y * spec.scale * 2.1, z * spec.scale * 2.1) * 0.35;
@@ -453,6 +610,34 @@ export function layoutBerries(bunch: BunchSpec): Berry[] {
   return list;
 }
 
+/** 曲がった筒を、つながった玉の列にほどく */
+export function layoutTube(tube: TubeSpec): Berry[] {
+  const list: Berry[] = [];
+  const from = (tube.fromDegrees * Math.PI) / 180;
+  const to = (tube.toDegrees * Math.PI) / 180;
+  const last = Math.max(1, tube.samples - 1);
+  for (let i = 0; i < tube.samples; i++) {
+    const t = i / last;
+    const angle = from + (to - from) * t;
+    const taper = Math.pow(Math.sin(Math.PI * t), 0.55);
+    list.push({
+      x: tube.centerX + tube.arcRadius * Math.cos(angle),
+      y: tube.centerY + tube.arcRadius * Math.sin(angle),
+      z: 0,
+      r: tube.endRadius + (tube.midRadius - tube.endRadius) * taper,
+    });
+  }
+  return list;
+}
+
+/** その形が玉の集まりで作られるなら、その玉を集める */
+export function collectSpheres(spec: StatueSpec): Berry[] | null {
+  if (spec.bunch) return layoutBerries(spec.bunch);
+  if (spec.tube) return layoutTube(spec.tube);
+  if (spec.spheres) return spec.spheres.map((berry) => ({ ...berry }));
+  return null;
+}
+
 /** 房の形をマスごとの値にしておく。粒ごとに囲みの中だけ回すので速い */
 const BERRY_SCALE = 8192;
 
@@ -510,7 +695,28 @@ export function buildStatue(spec: StatueSpec): StatueShape {
   const net = spec.net;
   // 網目を調べるのは表面の近くだけでよい
   const netBand = net ? net.height * 3 + 0.05 : 0;
-  const bunchField = spec.bunch ? buildBunchField(layoutBerries(spec.bunch)) : null;
+  const spheres = collectSpheres(spec);
+  const bunchField = spheres ? buildBunchField(spheres) : null;
+
+  // へた・葉の当たり範囲は形ごとに決まるので、先に出しておく
+  const rods: Array<{ stem: StemSpec; kind: number; low: number; high: number; reach: number }> =
+    [];
+  for (const [list, kind] of [
+    [spec.stems, MATERIAL_STEM],
+    [spec.leafStems, MATERIAL_LEAF],
+  ] as const) {
+    for (const stem of list ?? []) {
+      rods.push({
+        stem,
+        kind,
+        low: Math.min(stem.a[1], stem.b[1]) - stem.radius - 0.02,
+        high: Math.max(stem.a[1], stem.b[1]) + stem.radius + 0.02,
+        reach:
+          Math.max(Math.hypot(stem.a[0], stem.a[2]), Math.hypot(stem.b[0], stem.b[2])) +
+          stem.radius,
+      });
+    }
+  }
 
   let totalUnits = 0;
   let filledCells = 0;
@@ -537,8 +743,10 @@ export function buildStatue(spec: StatueSpec): StatueShape {
         let kind = MATERIAL_BODY;
         let onRidge = false;
 
-        // 表面近くだけ網目を盛る
-        if (net && field > -netBand && field < netBand) {
+        // 表面近くだけ網目を盛る。
+        // 本体のない高さでは中心軸まわりの向きが定まらず、
+        // 軸の上にごみが残るので、本体のあるところに限る。
+        if (net && bodyRadius > 0 && field > -netBand && field < netBand) {
           const ridge = netRidge(net, nx, ny, nz);
           if (ridge > 0.42) onRidge = true;
           field += net.height * ridge;
@@ -555,19 +763,14 @@ export function buildStatue(spec: StatueSpec): StatueShape {
           if (cut < field) field = cut;
         }
 
-        // 軸（複数つなげられる）
-        const stems = spec.stems;
-        if (stems) {
-          for (let s = 0; s < stems.length; s++) {
-            const stem = stems[s];
-            const low = Math.min(stem.a[1], stem.b[1]) - stem.radius - 0.02;
-            const high = Math.max(stem.a[1], stem.b[1]) + stem.radius + 0.02;
-            if (ny < low || ny > high || r > 0.32) continue;
-            const value = stem.radius - distanceToSegment(nx, ny, nz, stem.a, stem.b);
-            if (value > field) {
-              field = value;
-              kind = MATERIAL_STEM;
-            }
+        // へた・葉としてあつかう軸
+        for (let s = 0; s < rods.length; s++) {
+          const rod = rods[s];
+          if (ny < rod.low || ny > rod.high || r > rod.reach) continue;
+          const value = rod.stem.radius - distanceToSegment(nx, ny, nz, rod.stem.a, rod.stem.b);
+          if (value > field) {
+            field = value;
+            kind = rod.kind;
           }
         }
 

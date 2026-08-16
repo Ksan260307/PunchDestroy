@@ -12,10 +12,13 @@ import type { StepReport } from '../core/rules';
 import {
   materialKind,
   onNet,
+  STYLE_BANANA,
+  STYLE_CHERRY,
   STYLE_GRAPE,
   STYLE_KIWI,
   STYLE_MELON,
   STYLE_ORANGE,
+  STYLE_PINEAPPLE,
   surfaceDepth,
 } from '../core/shape';
 import type { WorldView } from '../core/view';
@@ -264,6 +267,19 @@ export class EffectSystem {
     if (kind === MATERIAL_LEAF) return [0.3, 0.6, 0.24];
     const depth = surfaceDepth(packed);
     const radius = Math.hypot(toUnit(x), toUnit(y) - view.statueCenterY, toUnit(z));
+    if (view.statueStyle === STYLE_BANANA) {
+      return depth <= 2 ? [0.96, 0.8, 0.16] : [0.98, 0.95, 0.84];
+    }
+    if (view.statueStyle === STYLE_PINEAPPLE) {
+      if (depth <= 3) return onNet(packed) ? [0.62, 0.46, 0.14] : [0.34, 0.28, 0.12];
+      if (radius < view.statueCoreRadius) return [0.98, 0.92, 0.66];
+      return [0.98, 0.8, 0.22];
+    }
+    if (view.statueStyle === STYLE_CHERRY) {
+      if (depth <= 2) return [0.62, 0.05, 0.11];
+      if (depth > 14) return [0.84, 0.74, 0.56];
+      return [0.86, 0.2, 0.22];
+    }
     if (view.statueStyle === STYLE_ORANGE) {
       if (depth <= 2) return [0.96, 0.55, 0.1];
       if (depth <= 7) return [0.96, 0.94, 0.86];
