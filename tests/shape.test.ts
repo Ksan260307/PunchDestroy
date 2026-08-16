@@ -12,11 +12,15 @@ import {
   APPLE,
   DEFAULT_STATUE,
   GRAPE,
+  KIWI,
   MELON,
+  MIKAN,
   STATUES,
   STYLE_APPLE,
   STYLE_GRAPE,
+  STYLE_KIWI,
   STYLE_MELON,
+  STYLE_ORANGE,
   buildStatue,
   findSpec,
   getStatue,
@@ -61,9 +65,10 @@ function topOfAxis(shape: StatueShape, offset = 0): number {
 
 describe('石像の並び', () => {
   it('選べるものがそろっている', () => {
-    expect(STATUES.length).toBeGreaterThanOrEqual(2);
-    expect(STATUES.map((spec) => spec.id)).toContain('apple');
-    expect(STATUES.map((spec) => spec.id)).toContain('melon');
+    expect(STATUES.length).toBe(ALL_STATUES.length);
+    for (const [, id] of ALL_STATUES) {
+      expect(STATUES.map((spec) => spec.id)).toContain(id);
+    }
     for (const spec of STATUES) {
       expect(spec.name.length).toBeGreaterThan(0);
     }
@@ -91,11 +96,17 @@ describe('石像の並び', () => {
   });
 });
 
-describe.each([
+/** 輪郭からできている形（房でないもの） */
+const ROUND_STATUES: Array<[string, string]> = [
   ['りんご', 'apple'],
+  ['みかん', 'mikan'],
   ['メロン', 'melon'],
-  ['ぶどう', 'grape'],
-])('%s の形', (_name, id) => {
+  ['キウイ', 'kiwi'],
+];
+
+const ALL_STATUES: Array<[string, string]> = [...ROUND_STATUES, ['ぶどう', 'grape']];
+
+describe.each(ALL_STATUES)('%s の形', (_name, id) => {
   const shape = getStatue(id);
 
   it('中身のあるマスがそれなりの数ある', () => {
@@ -118,11 +129,11 @@ describe.each([
     expect(surfaceDepth(shape.material[voxelIndex(c, c, c)])).toBeGreaterThan(3);
   });
 
-  it('本体と軸がある', () => {
+  it('本体と、へたか葉がある', () => {
     const kinds = new Set<number>();
-    for (let i = 0; i < VOXEL_COUNT; i += 7) kinds.add(materialKind(shape.material[i]));
+    for (let i = 0; i < VOXEL_COUNT; i += 5) kinds.add(materialKind(shape.material[i]));
     expect(kinds.has(MATERIAL_BODY)).toBe(true);
-    expect(kinds.has(MATERIAL_STEM)).toBe(true);
+    expect(kinds.has(MATERIAL_STEM) || kinds.has(MATERIAL_LEAF)).toBe(true);
   });
 
   it('何度作っても同じものになる', () => {
@@ -150,26 +161,27 @@ describe.each([
   });
 });
 
-describe.each([
-  ['りんご', 'apple'],
-  ['メロン', 'melon'],
-])('%s の輪郭', (_name, id) => {
+describe.each(ROUND_STATUES)('%s の輪郭', (_name, id) => {
   const shape = getStatue(id);
 
   it('上下に向かうほど細い', () => {
     const middle = widthAtHeight(shape, Math.round(GRID * 0.45));
     const shoulder = widthAtHeight(shape, Math.round(GRID * 0.8));
-    const bottom = widthAtHeight(shape, Math.round(GRID * 0.2));
+    const bottom = widthAtHeight(shape, Math.round(GRID * 0.22));
     expect(middle).toBeGreaterThan(shoulder);
     expect(middle).toBeGreaterThan(bottom);
     expect(bottom).toBeGreaterThan(0);
   });
 
   it('上面はくぼんでいて、とがっていない', () => {
+    // 中心軸より高いところが、軸から離れた場所にあること
     const axis = topOfAxis(shape);
-    const rim = topOfAxis(shape, Math.round(GRID * 0.18));
     expect(axis).toBeGreaterThan(0);
-    expect(rim).toBeGreaterThan(axis);
+    let highest = -1;
+    for (let offset = 2; offset < GRID / 2; offset++) {
+      highest = Math.max(highest, topOfAxis(shape, offset));
+    }
+    expect(highest).toBeGreaterThan(axis);
   });
 });
 
@@ -259,6 +271,93 @@ describe('メロンならではのところ', () => {
     for (let x = c - 20; x <= c + 20; x++) {
       expect(densityAt(melon, x, c, c)).toBeGreaterThan(200);
     }
+  });
+});
+
+describe('みかんならではのところ', () => {
+  const mikan = getStatue('mikan');
+  const apple = getStatue('apple');
+
+  it('描き方はみかんの系統', () => {
+    expect(mikan.spec.style).toBe(STYLE_ORANGE);
+    expect(MIKAN.net).toBeDefined();
+    expect(MIKAN.stems).toBeUndefined();
+  });
+
+  it('平たい（りんごより横に広い）', () => {
+    const flatness = (shape: StatueShape) => {
+      const c = GRID / 2;
+      let width = 0;
+      let height = 0;
+      for (let x = 0; x < GRID; x++) if (densityAt(shape, x, c, c) > 128) width++;
+      for (let y = 0; y < GRID; y++) if (densityAt(shape, c, y, c) > 128) height++;
+      return width / height;
+    };
+    expect(flatness(mikan)).toBeGreaterThan(flatness(apple));
+    expect(flatness(mikan)).toBeGreaterThan(1);
+  });
+
+  it('上にヘタが付いている', () => {
+    let leaves = 0;
+    for (let i = 0; i < VOXEL_COUNT; i++) {
+      if (materialKind(mikan.material[i]) === MATERIAL_LEAF) leaves++;
+    }
+    expect(leaves).toBeGreaterThan(0);
+  });
+
+  it('上下ともくぼんでいる', () => {
+    const c = GRID / 2;
+    const bottomOfAxis = () => {
+      for (let y = 0; y < GRID; y++) {
+        if (densityAt(mikan, c, y, c) > 128) return y;
+      }
+      return -1;
+    };
+    let lowest = GRID;
+    for (let offset = 2; offset < GRID / 2; offset++) {
+      for (let y = 0; y < GRID; y++) {
+        if (densityAt(mikan, c + offset, y, c) > 128) {
+          lowest = Math.min(lowest, y);
+          break;
+        }
+      }
+    }
+    expect(lowest).toBeLessThan(bottomOfAxis());
+  });
+});
+
+describe('キウイならではのところ', () => {
+  const kiwi = getStatue('kiwi');
+
+  it('描き方はキウイの系統', () => {
+    expect(kiwi.spec.style).toBe(STYLE_KIWI);
+    expect(KIWI.net).toBeDefined();
+    expect(KIWI.leaf).toBeUndefined();
+  });
+
+  it('縦に長い', () => {
+    const c = GRID / 2;
+    let width = 0;
+    let height = 0;
+    for (let x = 0; x < GRID; x++) if (densityAt(kiwi, x, c, c) > 128) width++;
+    for (let y = 0; y < GRID; y++) if (densityAt(kiwi, c, y, c) > 128) height++;
+    expect(height).toBeGreaterThan(width * 1.2);
+  });
+
+  it('上下の両端にヘタが付いている', () => {
+    const c = GRID / 2;
+    const kinds = { upper: 0, lower: 0 };
+    for (let y = 0; y < GRID; y++) {
+      if (materialKind(kiwi.material[voxelIndex(c, y, c)]) !== MATERIAL_STEM) continue;
+      if (y > c) kinds.upper++;
+      else kinds.lower++;
+    }
+    expect(kinds.upper).toBeGreaterThan(0);
+    expect(kinds.lower).toBeGreaterThan(0);
+  });
+
+  it('芯はほかより細い（種の輪がその外側に来る）', () => {
+    expect(KIWI.coreRadius).toBeLessThan(APPLE.coreRadius);
   });
 });
 

@@ -145,6 +145,8 @@ void main() {
   vec3 coreColor = vec3(1.0, 0.68, 0.22);
   if (uStyle == 1) coreColor = vec3(0.88, 0.92, 0.68);
   else if (uStyle == 2) coreColor = vec3(0.96, 0.62, 0.78);
+  else if (uStyle == 3) coreColor = vec3(0.98, 0.95, 0.86);
+  else if (uStyle == 4) coreColor = vec3(0.96, 0.95, 0.86);
 
   vec3 albedo;
   if (kind == 2u) albedo = vec3(0.46, 0.33, 0.20);
@@ -155,6 +157,29 @@ void main() {
     albedo = mix(vec3(0.86, 0.87, 0.72), skin, paint);
     albedo = mix(albedo, vec3(0.66, 0.84, 0.50), smoothstep(4.0, 13.0, depth));
     albedo = mix(albedo, coreColor, core * 0.8);
+  } else if (uStyle == 3) {
+    // みかん：橙の皮 → 白いわた → ふさに分かれた果肉
+    float angle = atan(p.z, p.x) / 6.2831853 + 0.5;
+    float wedge = abs(fract(angle * 10.0) - 0.5) * 2.0;
+    float film = smoothstep(0.86, 1.0, wedge);
+    vec3 flesh = mix(vec3(0.98, 0.58, 0.12), vec3(0.98, 0.93, 0.80), film);
+    // 皮のすぐ下は白いわた。そこを抜けるとふさに分かれた果肉
+    float rind = 1.0 - smoothstep(2.2, 4.5, depth);
+    albedo = mix(vec3(0.96, 0.94, 0.86), vec3(0.96, 0.55, 0.10), rind);
+    albedo = mix(albedo, flesh, smoothstep(5.0, 9.0, depth));
+    albedo = mix(albedo, coreColor, core * 0.3);
+  } else if (uStyle == 4) {
+    // キウイ：産毛の茶色い皮 → 鮮やかな緑 → 白い芯のまわりに種の輪
+    float ring = length(p.xz);
+    float angle = atan(p.z, p.x) / 6.2831853 + 0.5;
+    float band = smoothstep(0.30, 0.20, abs(ring - 0.26));
+    float dots = smoothstep(0.62, 0.86, abs(fract(angle * 22.0) - 0.5) * 2.0)
+      * smoothstep(0.55, 0.85, abs(fract(p.y * 9.0) - 0.5) * 2.0);
+    float seed = band * dots * smoothstep(4.0, 7.0, depth);
+    vec3 flesh = mix(vec3(0.58, 0.78, 0.28), vec3(0.12, 0.14, 0.07), seed);
+    albedo = mix(vec3(0.72, 0.62, 0.44), vec3(0.44, 0.32, 0.18), paint);
+    albedo = mix(albedo, flesh, smoothstep(3.0, 7.0, depth));
+    albedo = mix(albedo, coreColor, core * 0.7);
   } else if (uStyle == 2) {
     // ぶどう：粒ごとに、粉をふいた紫の皮の下から淡い果肉
     float bloom = (1.0 - smoothstep(0.4, 2.2, depth)) * 0.32;

@@ -66,7 +66,9 @@ describe('通しプレイ', () => {
 
 describe.each([
   ['りんご', 'apple'],
+  ['みかん', 'mikan'],
   ['メロン', 'melon'],
+  ['キウイ', 'kiwi'],
   ['ぶどう', 'grape'],
 ])('%s も通しで壊せる', (_name, id) => {
   const session = new Session(4242, id);

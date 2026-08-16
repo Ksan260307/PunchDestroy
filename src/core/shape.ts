@@ -27,6 +27,8 @@ export type Vec3 = [number, number, number];
 export const STYLE_APPLE = 0;
 export const STYLE_MELON = 1;
 export const STYLE_GRAPE = 2;
+export const STYLE_ORANGE = 3;
+export const STYLE_KIWI = 4;
 
 /** 軸（へた）の指定 */
 export interface StemSpec {
@@ -235,7 +237,61 @@ export const GRAPE: StatueSpec = {
   hitPowerScale: 210,
 };
 
-export const STATUES: StatueSpec[] = [APPLE, MELON, GRAPE];
+/** みかん。平たい橙の球。皮の下は白いわた、中はふさに分かれた果肉 */
+export const MIKAN: StatueSpec = {
+  id: 'mikan',
+  name: 'みかん',
+  style: STYLE_ORANGE,
+  profile: [0, 0.72, 0.9, 0.96, 0.99, 1.0, 0.99, 0.96, 0.9, 0.7, 0.24],
+  bottom: -0.66,
+  top: 0.66,
+  scale: 0.86,
+  lobes: 12,
+  lobeDepth: 0.007,
+  dents: [
+    { y: 0.64, radius: 0.2, height: 0.1 },
+    { y: -0.64, radius: 0.22, height: 0.1 },
+  ],
+  // 細かい粒立ちの皮
+  net: { scale: 17, height: 0.006, width: 0.52 },
+  // 上のヘタ（平たい緑の円盤）
+  leaf: {
+    center: [0, 0.605, 0],
+    long: 0.17,
+    short: 0.038,
+    thick: 0.17,
+    cos: 1,
+    sin: 0,
+  },
+  coreRadius: 0.3,
+};
+
+/** キウイ。産毛の生えた茶色い楕円。割ると鮮やかな緑と種の輪 */
+export const KIWI: StatueSpec = {
+  id: 'kiwi',
+  name: 'キウイ',
+  style: STYLE_KIWI,
+  profile: [0, 0.54, 0.78, 0.91, 0.975, 1.0, 0.975, 0.91, 0.78, 0.54, 0.2],
+  bottom: -0.86,
+  top: 0.86,
+  scale: 0.66,
+  lobes: 0,
+  lobeDepth: 0,
+  dents: [
+    { y: 0.84, radius: 0.14, height: 0.08 },
+    { y: -0.84, radius: 0.13, height: 0.07 },
+  ],
+  // 産毛のざらつき
+  net: { scale: 24, height: 0.005, width: 0.48 },
+  // 両端の小さなヘタ
+  stems: [
+    { a: [0, 0.76, 0], b: [0, 0.9, 0], radius: 0.032 },
+    { a: [0, -0.9, 0], b: [0, -0.78, 0], radius: 0.028 },
+  ],
+  coreRadius: 0.22,
+};
+
+export const STATUES: StatueSpec[] = [APPLE, MIKAN, MELON, KIWI, GRAPE];
 export const DEFAULT_STATUE = APPLE.id;
 
 export function findSpec(id: string): StatueSpec {

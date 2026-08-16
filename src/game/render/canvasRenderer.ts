@@ -6,7 +6,15 @@
  */
 
 import { BLOCKS, GRID, MATERIAL_LEAF, MATERIAL_STEM, SOLID_THRESHOLD } from '../../core/constants';
-import { materialKind, onNet, STYLE_GRAPE, STYLE_MELON, surfaceDepth } from '../../core/shape';
+import {
+  materialKind,
+  onNet,
+  STYLE_GRAPE,
+  STYLE_KIWI,
+  STYLE_MELON,
+  STYLE_ORANGE,
+  surfaceDepth,
+} from '../../core/shape';
 import type { OrbitCamera } from '../camera';
 import type { RenderFrame, Renderer } from './types';
 
@@ -104,8 +112,9 @@ export class CanvasRenderer implements Renderer {
     const innerH = this.innerH;
     const tanY = camera.tanHalf * frame.fx.zoom;
     const tanX = tanY * camera.aspect;
-    const melon = view.statueStyle === STYLE_MELON;
-    const grape = view.statueStyle === STYLE_GRAPE;
+    const style = view.statueStyle;
+    const melon = style === STYLE_MELON;
+    const grape = style === STYLE_GRAPE;
 
     for (let py = 0; py < innerH; py++) {
       const ndcY = 1 - ((py + 0.5) / innerH) * 2;
@@ -202,6 +211,34 @@ export class CanvasRenderer implements Renderer {
           r = 0.34;
           g = 0.58;
           bl = 0.28;
+        } else if (style === STYLE_ORANGE) {
+          if (depth <= 2) {
+            r = 0.96;
+            g = 0.55;
+            bl = 0.1;
+          } else if (depth <= 7) {
+            r = 0.96;
+            g = 0.94;
+            bl = 0.86;
+          } else {
+            r = 0.98;
+            g = 0.6;
+            bl = 0.14;
+          }
+        } else if (style === STYLE_KIWI) {
+          if (depth <= 2) {
+            r = 0.44;
+            g = 0.32;
+            bl = 0.18;
+          } else if (depth > 22) {
+            r = 0.96;
+            g = 0.95;
+            bl = 0.86;
+          } else {
+            r = 0.58;
+            g = 0.78;
+            bl = 0.28;
+          }
         } else if (grape) {
           if (depth <= 1) {
             r = 0.66;

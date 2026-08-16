@@ -209,7 +209,9 @@ describe('見返し再生', () => {
 
 describe.each([
   ['りんご', 'apple'],
+  ['みかん', 'mikan'],
   ['メロン', 'melon'],
+  ['キウイ', 'kiwi'],
   ['ぶどう', 'grape'],
 ])('%s の見返し再生', (_name, id) => {
   const session = new Session(864, id);
