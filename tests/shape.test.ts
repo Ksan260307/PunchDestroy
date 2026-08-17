@@ -501,9 +501,9 @@ describe('バナナならではのところ', () => {
       expect(middle.r).toBeGreaterThan(parts[0].r);
       expect(middle.r).toBeGreaterThan(parts[parts.length - 1].r);
 
-      // 倒したり回したりしても弧の形は変わらない。
+      // 回して置きなおしても弧の形は変わらない。
       // 上端からの直線距離が、弧の弦の長さと合うことで確かめる
-      const span = ((tube.toDegrees - tube.fromDegrees) * Math.PI) / 180;
+      const span = (Math.abs(tube.toDegrees - tube.fromDegrees) * Math.PI) / 180;
       const last = parts.length - 1;
       for (let i = 0; i <= last; i++) {
         const chord = 2 * tube.arcRadius * Math.sin((span * i) / last / 2);
@@ -561,19 +561,27 @@ describe('バナナならではのところ', () => {
   });
 
   it('横に切ると3本に分かれている', () => {
-    // 房の高さで中心軸のまわりを一周なぞると、3か所で実に当たる
+    // 実はへたの付け根から放射状に垂れるので、そこを中心に一周なぞると
+    // 3か所で実に当たる
     const c = GRID / 2;
+    const head = layoutTube(BANANA.tubes![0])[0];
+    const centerX = c + head.x * (GRID / 2);
+    const centerZ = c + head.z * (GRID / 2);
     const box = bodyBox(banana);
     const y = Math.round(box.minY + (box.maxY - box.minY) * 0.45);
     // いちばん実を長くなぞれる輪で数える（かすめただけの輪は当てにならない）
     let bestSolid = 0;
     let runsThere = 0;
-    for (let radius = 10; radius < c; radius += 1) {
+    for (let radius = 10; radius < GRID / 2; radius += 1) {
       const ring: boolean[] = [];
       for (let i = 0; i < 360; i++) {
         const angle = (2 * Math.PI * i) / 360;
-        const x = Math.round(c + Math.cos(angle) * radius);
-        const z = Math.round(c + Math.sin(angle) * radius);
+        const x = Math.round(centerX + Math.cos(angle) * radius);
+        const z = Math.round(centerZ + Math.sin(angle) * radius);
+        if (x < 0 || z < 0 || x >= GRID || z >= GRID) {
+          ring.push(false);
+          continue;
+        }
         ring.push(densityAt(banana, x, y, z) > 128 && kindAt(banana, x, y, z) === MATERIAL_BODY);
       }
       const solid = ring.filter(Boolean).length;
@@ -600,7 +608,7 @@ describe('バナナならではのところ', () => {
         middle.y - (head.y + tail.y) / 2,
         middle.z - (head.z + tail.z) / 2,
       );
-      const span = ((tube.toDegrees - tube.fromDegrees) * Math.PI) / 180;
+      const span = (Math.abs(tube.toDegrees - tube.fromDegrees) * Math.PI) / 180;
       expect(Math.abs(sagitta - tube.arcRadius * (1 - Math.cos(span / 2)))).toBeLessThan(0.02);
       expect(sagitta).toBeGreaterThan(0.3);
     }

@@ -79,8 +79,6 @@ export interface TubeSpec {
   midRadius: number;
   /** いくつの玉でつなぐか */
   samples: number;
-  /** 上端を支点にして倒す角度（度）。房を外へ広げるのに使う */
-  tiltDegrees?: number;
   /** 中心の縦軸まわりに回す角度（度）。同じ筒を並べて房にするのに使う */
   spinDegrees?: number;
   /** 置き場所のずらし。倒して回したあとに効く */
@@ -355,29 +353,33 @@ function pineappleCrown(): StemSpec[] {
 
 /**
  * 房1本ぶんの弧。
- * centerX は上端（140度の位置）がちょうど中心軸に来るように決めてある。
- * こうすると縦軸まわりに回しても、上は1か所に集まったまま下だけ広がる。
+ *
+ * へたの付け根から真下へ垂れ、外へふくらんでから、先はまた内へ返る。
+ * ふくらむのが外側、へこむのが内側になるので、実の反りが上を向かない。
+ * 上端の角度は 75 度。そこがちょうど中心軸（x=0）に来るよう中心をずらしてあり、
+ * 縦軸まわりに回しても付け根は1か所に集まったまま、下だけ広がる。
  */
-const BANANA_ARC_RADIUS = 1.1;
+const BANANA_ARC_RADIUS = 1.12;
+const BANANA_HEAD_DEGREES = 75;
 const bananaArc: TubeSpec = {
-  centerX: -BANANA_ARC_RADIUS * Math.cos((140 * Math.PI) / 180),
-  centerY: 0,
+  centerX: -BANANA_ARC_RADIUS * Math.cos((BANANA_HEAD_DEGREES * Math.PI) / 180),
+  centerY: -0.33,
   arcRadius: BANANA_ARC_RADIUS,
-  fromDegrees: 140,
-  toDegrees: 240,
-  endRadius: 0.055,
-  midRadius: 0.22,
-  samples: 150,
+  fromDegrees: BANANA_HEAD_DEGREES,
+  toDegrees: -25,
+  endRadius: 0.042,
+  midRadius: 0.175,
+  samples: 170,
 };
 
 /**
  * 房ぜんぶの向きと置き場所。
- * 大きく倒すと実が片側に寄るので、その分を戻して真ん中に置く。
- * 向きは、扇の開きが正面から見えるように決めてある。
+ * 実が付け根の片側にそろうので、その分を戻して真ん中に置く。
+ * 向きは、扇の開きが最初のカメラ位置から見えるように決めてある。
  */
 const BANANA_FACING = (130 * Math.PI) / 180;
-const BANANA_REACH = 0.7;
-const BANANA_SHIFT_Y = -0.25;
+const BANANA_REACH = -0.62;
+const BANANA_SHIFT_Y = 0.02;
 /** 付け根から out だけ離れた、房の向きに沿う場所 */
 function bananaAt(out: number, y: number): Vec3 {
   const reach = BANANA_REACH + out;
@@ -386,7 +388,10 @@ function bananaAt(out: number, y: number): Vec3 {
 const [bananaPlaceX, , bananaPlaceZ] = bananaAt(0, 0);
 const bananaPlace = { shiftX: bananaPlaceX, shiftY: BANANA_SHIFT_Y, shiftZ: bananaPlaceZ };
 /** へたの付け根の高さ。弧の上端がここに集まる */
-const BANANA_JOINT_Y = BANANA_ARC_RADIUS * Math.sin((140 * Math.PI) / 180) + BANANA_SHIFT_Y;
+const BANANA_JOINT_Y =
+  bananaArc.centerY +
+  BANANA_ARC_RADIUS * Math.sin((BANANA_HEAD_DEGREES * Math.PI) / 180) +
+  BANANA_SHIFT_Y;
 const BANANA_SPIN = (BANANA_FACING * 180) / Math.PI;
 
 /** バナナ。曲がった筒を3本まとめた房。皮の下は白い果肉 */
@@ -401,25 +406,30 @@ export const BANANA: StatueSpec = {
   lobes: 0,
   lobeDepth: 0,
   dents: [],
-  // 3本の房。上端はどれも一点で重なり、そこから大きく倒して扇形に広げる。
-  // 狭い角度に並べるので、実どうしが軽く触れあって一房に見える。
-  // まとまりが片側に寄るぶん、全体を横にずらして真ん中に置く
+  // 3本の房。上端はどれも一点で重なり、そこから下へ垂れて扇形に広がる。
+  // 狭い角度に並べるので、実どうしが軽く触れあって一房に見える
   tubes: [
-    { ...bananaArc, toDegrees: 236, tiltDegrees: -60, spinDegrees: BANANA_SPIN - 36, ...bananaPlace },
-    { ...bananaArc, toDegrees: 242, tiltDegrees: -63, spinDegrees: BANANA_SPIN, ...bananaPlace },
-    { ...bananaArc, toDegrees: 238, tiltDegrees: -61, spinDegrees: BANANA_SPIN + 35, ...bananaPlace },
+    { ...bananaArc, toDegrees: -21, spinDegrees: BANANA_SPIN - 42, ...bananaPlace },
+    { ...bananaArc, toDegrees: -28, spinDegrees: BANANA_SPIN, ...bananaPlace },
+    { ...bananaArc, toDegrees: -23, spinDegrees: BANANA_SPIN + 41, ...bananaPlace },
   ],
-  // 房をまとめる太いへた。付け根は太く、先はすぼまる
+  // 房をまとめるへた。実はこの下端から生えている。
+  // 太いところから先へ向かってすぼめ、円錐に近い形にする
   stems: [
     {
-      a: bananaAt(-0.03, BANANA_JOINT_Y - 0.02),
-      b: bananaAt(0.02, BANANA_JOINT_Y + 0.22),
-      radius: 0.155,
+      a: bananaAt(-0.02, BANANA_JOINT_Y - 0.05),
+      b: bananaAt(0, BANANA_JOINT_Y + 0.05),
+      radius: 0.135,
     },
     {
-      a: bananaAt(0.02, BANANA_JOINT_Y + 0.2),
-      b: bananaAt(0.08, BANANA_JOINT_Y + 0.46),
-      radius: 0.085,
+      a: bananaAt(0, BANANA_JOINT_Y + 0.04),
+      b: bananaAt(0.02, BANANA_JOINT_Y + 0.16),
+      radius: 0.095,
+    },
+    {
+      a: bananaAt(0.02, BANANA_JOINT_Y + 0.15),
+      b: bananaAt(0.05, BANANA_JOINT_Y + 0.32),
+      radius: 0.055,
     },
   ],
   coreRadius: 0.03,
@@ -665,35 +675,27 @@ export function layoutBerries(bunch: BunchSpec): Berry[] {
 
 /**
  * 曲がった筒を、つながった玉の列にほどく。
- * 弧を描いたあと、上端を支点に倒し、縦軸まわりに回して置く。
+ * 弧を描いたあと、縦軸まわりに回して、置き場所へずらす。
  */
 export function layoutTube(tube: TubeSpec): Berry[] {
   const list: Berry[] = [];
   const from = (tube.fromDegrees * Math.PI) / 180;
   const to = (tube.toDegrees * Math.PI) / 180;
-  const tilt = ((tube.tiltDegrees ?? 0) * Math.PI) / 180;
-  const tiltCos = Math.cos(tilt);
-  const tiltSin = Math.sin(tilt);
   const spin = ((tube.spinDegrees ?? 0) * Math.PI) / 180;
   const spinCos = Math.cos(spin);
   const spinSin = Math.sin(spin);
   const shiftX = tube.shiftX ?? 0;
   const shiftY = tube.shiftY ?? 0;
   const shiftZ = tube.shiftZ ?? 0;
-  const headX = tube.centerX + tube.arcRadius * Math.cos(from);
-  const headY = tube.centerY + tube.arcRadius * Math.sin(from);
   const last = Math.max(1, tube.samples - 1);
   for (let i = 0; i < tube.samples; i++) {
     const t = i / last;
     const angle = from + (to - from) * t;
     const taper = Math.pow(Math.sin(Math.PI * t), 0.55);
-    const armX = tube.centerX + tube.arcRadius * Math.cos(angle) - headX;
-    const armY = tube.centerY + tube.arcRadius * Math.sin(angle) - headY;
-    const x = headX + armX * tiltCos - armY * tiltSin;
-    const y = headY + armX * tiltSin + armY * tiltCos;
+    const x = tube.centerX + tube.arcRadius * Math.cos(angle);
     list.push({
       x: x * spinCos + shiftX,
-      y: y + shiftY,
+      y: tube.centerY + tube.arcRadius * Math.sin(angle) + shiftY,
       z: -x * spinSin + shiftZ,
       r: tube.endRadius + (tube.midRadius - tube.endRadius) * taper,
     });
