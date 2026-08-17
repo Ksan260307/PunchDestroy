@@ -488,64 +488,119 @@ describe('バナナならではのところ', () => {
 
   it('描き方はバナナの系統で、曲がった筒で作られている', () => {
     expect(banana.spec.style).toBe(STYLE_BANANA);
-    expect(BANANA.tube).toBeDefined();
+    expect(BANANA.tubes).toHaveLength(3);
     expect(BANANA.net).toBeUndefined();
     expect(BANANA.bunch).toBeUndefined();
   });
 
   it('筒は弧に沿って並び、両端が細くなる', () => {
-    const parts = layoutTube(BANANA.tube!);
-    expect(parts.length).toBe(BANANA.tube!.samples);
-    const middle = parts[Math.floor(parts.length / 2)];
-    expect(middle.r).toBeGreaterThan(parts[0].r);
-    expect(middle.r).toBeGreaterThan(parts[parts.length - 1].r);
-    for (const part of parts) {
-      // 中心のずれた円弧の上なので、弧の中心からの距離はどれも同じ
-      const distance = Math.hypot(part.x - BANANA.tube!.centerX, part.y - BANANA.tube!.centerY);
-      expect(Math.abs(distance - BANANA.tube!.arcRadius)).toBeLessThan(0.02);
-      expect(part.z).toBe(0);
+    for (const tube of BANANA.tubes!) {
+      const parts = layoutTube(tube);
+      expect(parts.length).toBe(tube.samples);
+      const middle = parts[Math.floor(parts.length / 2)];
+      expect(middle.r).toBeGreaterThan(parts[0].r);
+      expect(middle.r).toBeGreaterThan(parts[parts.length - 1].r);
+
+      // 倒したり回したりしても弧の形は変わらない。
+      // 上端からの直線距離が、弧の弦の長さと合うことで確かめる
+      const span = ((tube.toDegrees - tube.fromDegrees) * Math.PI) / 180;
+      const last = parts.length - 1;
+      for (let i = 0; i <= last; i++) {
+        const chord = 2 * tube.arcRadius * Math.sin((span * i) / last / 2);
+        const distance = Math.hypot(
+          parts[i].x - parts[0].x,
+          parts[i].y - parts[0].y,
+          parts[i].z - parts[0].z,
+        );
+        expect(Math.abs(distance - chord)).toBeLessThan(0.01);
+      }
     }
   });
 
-  it('筒の並びは毎回同じ', () => {
-    const a = layoutTube(BANANA.tube!);
-    const b = collectSpheres(BANANA)!;
-    expect(b.map((p) => `${p.x},${p.y},${p.z},${p.r}`)).toEqual(
-      a.map((p) => `${p.x},${p.y},${p.z},${p.r}`),
+  it('3本の上端が中心軸のひとところに集まる', () => {
+    for (const tube of BANANA.tubes!) {
+      const head = layoutTube(tube)[0];
+      expect(Math.hypot(head.x, head.z)).toBeLessThan(0.01);
+      expect(head.y).toBeGreaterThan(0.6);
+    }
+  });
+
+  it('筒の並びは毎回同じで、3本ぶんが集まる', () => {
+    const parts = collectSpheres(BANANA)!;
+    const expected = BANANA.tubes!.flatMap((tube) => layoutTube(tube));
+    expect(parts.map((p) => `${p.x},${p.y},${p.z},${p.r}`)).toEqual(
+      expected.map((p) => `${p.x},${p.y},${p.z},${p.r}`),
     );
+    expect(parts.length).toBe(BANANA.tubes!.reduce((sum, tube) => sum + tube.samples, 0));
   });
 
-  it('細長い', () => {
-    const box = bodyBox(banana);
-    const height = box.maxY - box.minY;
-    const depth = box.maxZ - box.minZ;
-    expect(height).toBeGreaterThan(depth * 2);
-    expect(box.maxX - box.minX).toBeGreaterThan(depth);
-  });
-
-  it('弓なりに反っている', () => {
-    // 高さごとに本体の左右の真ん中を見ると、中ほどだけ横にふくらむ
-    const meanX = (y: number) => {
-      let sum = 0;
-      let count = 0;
+  it('上でまとまり、下へ向かって外へ広がる', () => {
+    // 高さごとに、中心軸からいちばん遠い本体のマスを見る
+    const c = GRID / 2;
+    const reachAt = (y: number) => {
+      let far = 0;
       for (let x = 0; x < GRID; x++) {
         for (let z = 0; z < GRID; z++) {
           if (densityAt(banana, x, y, z) <= 128) continue;
           if (kindAt(banana, x, y, z) !== MATERIAL_BODY) continue;
-          sum += x;
-          count++;
+          far = Math.max(far, Math.hypot(x - c, z - c));
         }
       }
-      return count > 0 ? sum / count : NaN;
+      return far;
     };
-    const [low, high] = bodySpan(banana);
-    const at = (ratio: number) => meanX(Math.round(low + (high - low) * ratio));
-    const belly = at(0.5);
-    expect(belly).toBeLessThan(at(0.12) - 4);
-    expect(belly).toBeLessThan(at(0.88) - 4);
+    const box = bodyBox(banana);
+    const at = (ratio: number) => reachAt(Math.round(box.minY + (box.maxY - box.minY) * ratio));
+    expect(at(0.98)).toBeLessThan(at(0.55));
+    expect(at(0.55)).toBeGreaterThan(GRID * 0.2);
   });
 
-  it('上の切り口にへたが付いている', () => {
+  it('横に切ると3本に分かれている', () => {
+    // 房の高さで中心軸のまわりを一周なぞると、3か所で実に当たる
+    const c = GRID / 2;
+    const box = bodyBox(banana);
+    const y = Math.round(box.minY + (box.maxY - box.minY) * 0.45);
+    // いちばん実を長くなぞれる輪で数える（かすめただけの輪は当てにならない）
+    let bestSolid = 0;
+    let runsThere = 0;
+    for (let radius = 10; radius < c; radius += 1) {
+      const ring: boolean[] = [];
+      for (let i = 0; i < 360; i++) {
+        const angle = (2 * Math.PI * i) / 360;
+        const x = Math.round(c + Math.cos(angle) * radius);
+        const z = Math.round(c + Math.sin(angle) * radius);
+        ring.push(densityAt(banana, x, y, z) > 128 && kindAt(banana, x, y, z) === MATERIAL_BODY);
+      }
+      const solid = ring.filter(Boolean).length;
+      if (solid <= bestSolid) continue;
+      bestSolid = solid;
+      runsThere = 0;
+      for (let i = 0; i < ring.length; i++) {
+        if (ring[i] && !ring[(i + ring.length - 1) % ring.length]) runsThere++;
+      }
+    }
+    expect(bestSolid).toBeGreaterThan(0);
+    expect(runsThere).toBe(3);
+  });
+
+  it('1本ずつは弓なりに反っている', () => {
+    for (const tube of BANANA.tubes!) {
+      const parts = layoutTube(tube);
+      const head = parts[0];
+      const tail = parts[parts.length - 1];
+      const middle = parts[Math.floor(parts.length / 2)];
+      // 両端を結んだ線の真ん中から、弧までの隔たり。まっすぐなら0になる
+      const sagitta = Math.hypot(
+        middle.x - (head.x + tail.x) / 2,
+        middle.y - (head.y + tail.y) / 2,
+        middle.z - (head.z + tail.z) / 2,
+      );
+      const span = ((tube.toDegrees - tube.fromDegrees) * Math.PI) / 180;
+      expect(Math.abs(sagitta - tube.arcRadius * (1 - Math.cos(span / 2)))).toBeLessThan(0.02);
+      expect(sagitta).toBeGreaterThan(0.3);
+    }
+  });
+
+  it('房をまとめるへたが上に付いている', () => {
     const box = bodyBox(banana);
     let above = 0;
     for (let i = 0; i < VOXEL_COUNT; i++) {
@@ -615,7 +670,7 @@ describe('さくらんぼならではのところ', () => {
     expect(cherry.spec.style).toBe(STYLE_CHERRY);
     expect(CHERRY.spheres!.length).toBe(2);
     expect(CHERRY.bunch).toBeUndefined();
-    expect(CHERRY.tube).toBeUndefined();
+    expect(CHERRY.tubes).toBeUndefined();
     expect(CHERRY.net).toBeUndefined();
   });
 

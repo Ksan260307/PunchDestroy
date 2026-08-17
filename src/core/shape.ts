@@ -79,6 +79,12 @@ export interface TubeSpec {
   midRadius: number;
   /** いくつの玉でつなぐか */
   samples: number;
+  /** 上端を支点にして倒す角度（度）。房を外へ広げるのに使う */
+  tiltDegrees?: number;
+  /** 中心の縦軸まわりに回す角度（度）。同じ筒を並べて房にするのに使う */
+  spinDegrees?: number;
+  /** 上下のずらし */
+  shiftY?: number;
 }
 
 /** 引き算するへこみ（楕円体） */
@@ -129,8 +135,8 @@ export interface StatueSpec {
   readonly bunch?: BunchSpec;
   /** 玉をそのまま並べて作る場合（さくらんぼなど） */
   readonly spheres?: Berry[];
-  /** 曲がった筒で作る場合（バナナなど） */
-  readonly tube?: TubeSpec;
+  /** 曲がった筒で作る場合（バナナなど）。並べると房になる */
+  readonly tubes?: TubeSpec[];
   /** 軸（へた）。複数つなげると T 字などにできる */
   readonly stems?: StemSpec[];
   /** 葉としてあつかう軸（パイナップルの冠など） */
@@ -345,7 +351,23 @@ function pineappleCrown(): StemSpec[] {
   return crown;
 }
 
-/** バナナ。曲がった筒。皮の下は白い果肉 */
+/**
+ * 房1本ぶんの弧。
+ * centerX は上端（140度の位置）がちょうど中心軸に来るように決めてある。
+ * こうすると縦軸まわりに回しても、上は1か所に集まったまま下だけ広がる。
+ */
+const bananaArc: TubeSpec = {
+  centerX: -Math.cos((140 * Math.PI) / 180),
+  centerY: 0,
+  arcRadius: 1.0,
+  fromDegrees: 140,
+  toDegrees: 240,
+  endRadius: 0.045,
+  midRadius: 0.17,
+  samples: 120,
+};
+
+/** バナナ。曲がった筒を3本まとめた房。皮の下は白い果肉 */
 export const BANANA: StatueSpec = {
   id: 'banana',
   name: 'バナナ',
@@ -357,21 +379,18 @@ export const BANANA: StatueSpec = {
   lobes: 0,
   lobeDepth: 0,
   dents: [],
-  tube: {
-    centerX: 0.81,
-    centerY: 0,
-    arcRadius: 1.0,
-    fromDegrees: 128,
-    toDegrees: 232,
-    endRadius: 0.05,
-    midRadius: 0.215,
-    samples: 110,
-  },
-  // 上の切り口のへた
-  stems: [{ a: [0.194, 0.76, 0], b: [0.16, 0.94, 0], radius: 0.045 }],
+  // 3本の房。上端はどれも中心軸で重なり、外へ倒しながら三方に振り分ける。
+  // 均等に振ると重さが中心にそろうので、どの角度から見ても房に見える
+  tubes: [
+    { ...bananaArc, toDegrees: 236, tiltDegrees: -22, spinDegrees: 0, shiftY: 0.085 },
+    { ...bananaArc, toDegrees: 242, tiltDegrees: -24, spinDegrees: 122, shiftY: 0.1 },
+    { ...bananaArc, toDegrees: 238, tiltDegrees: -23, spinDegrees: 241, shiftY: 0.09 },
+  ],
+  // 房をまとめる軸
+  stems: [{ a: [0, 0.7, 0], b: [0.03, 0.96, 0], radius: 0.065 }],
   coreRadius: 0.03,
   // 細いぶん空を切りやすいので、当たりは狭めつつ深く抜く
-  hitScale: 76,
+  hitScale: 84,
   hitPowerScale: 150,
 };
 
@@ -610,20 +629,36 @@ export function layoutBerries(bunch: BunchSpec): Berry[] {
   return list;
 }
 
-/** 曲がった筒を、つながった玉の列にほどく */
+/**
+ * 曲がった筒を、つながった玉の列にほどく。
+ * 弧を描いたあと、上端を支点に倒し、縦軸まわりに回して置く。
+ */
 export function layoutTube(tube: TubeSpec): Berry[] {
   const list: Berry[] = [];
   const from = (tube.fromDegrees * Math.PI) / 180;
   const to = (tube.toDegrees * Math.PI) / 180;
+  const tilt = ((tube.tiltDegrees ?? 0) * Math.PI) / 180;
+  const tiltCos = Math.cos(tilt);
+  const tiltSin = Math.sin(tilt);
+  const spin = ((tube.spinDegrees ?? 0) * Math.PI) / 180;
+  const spinCos = Math.cos(spin);
+  const spinSin = Math.sin(spin);
+  const shiftY = tube.shiftY ?? 0;
+  const headX = tube.centerX + tube.arcRadius * Math.cos(from);
+  const headY = tube.centerY + tube.arcRadius * Math.sin(from);
   const last = Math.max(1, tube.samples - 1);
   for (let i = 0; i < tube.samples; i++) {
     const t = i / last;
     const angle = from + (to - from) * t;
     const taper = Math.pow(Math.sin(Math.PI * t), 0.55);
+    const armX = tube.centerX + tube.arcRadius * Math.cos(angle) - headX;
+    const armY = tube.centerY + tube.arcRadius * Math.sin(angle) - headY;
+    const x = headX + armX * tiltCos - armY * tiltSin;
+    const y = headY + armX * tiltSin + armY * tiltCos;
     list.push({
-      x: tube.centerX + tube.arcRadius * Math.cos(angle),
-      y: tube.centerY + tube.arcRadius * Math.sin(angle),
-      z: 0,
+      x: x * spinCos,
+      y: y + shiftY,
+      z: -x * spinSin,
       r: tube.endRadius + (tube.midRadius - tube.endRadius) * taper,
     });
   }
@@ -633,7 +668,7 @@ export function layoutTube(tube: TubeSpec): Berry[] {
 /** その形が玉の集まりで作られるなら、その玉を集める */
 export function collectSpheres(spec: StatueSpec): Berry[] | null {
   if (spec.bunch) return layoutBerries(spec.bunch);
-  if (spec.tube) return layoutTube(spec.tube);
+  if (spec.tubes) return spec.tubes.flatMap((tube) => layoutTube(tube));
   if (spec.spheres) return spec.spheres.map((berry) => ({ ...berry }));
   return null;
 }

@@ -183,7 +183,7 @@ void main() {
     albedo = mix(albedo, coreColor, core * 0.7);
   } else if (uStyle == 5) {
     // バナナ：黄色い皮のすぐ下から白い果肉。ところどころ茶色い斑
-    float spot = smoothstep(0.62, 0.80, noise3(p * 11.0));
+    float spot = smoothstep(0.64, 0.78, noise3(p * 18.0));
     vec3 peel = mix(vec3(0.96, 0.80, 0.16), vec3(0.44, 0.28, 0.12), spot);
     albedo = mix(vec3(0.98, 0.95, 0.84), peel, 1.0 - smoothstep(1.8, 3.4, depth));
   } else if (uStyle == 6) {
