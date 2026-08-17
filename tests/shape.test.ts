@@ -517,12 +517,18 @@ describe('バナナならではのところ', () => {
     }
   });
 
-  it('3本の上端が中心軸のひとところに集まる', () => {
-    for (const tube of BANANA.tubes!) {
-      const head = layoutTube(tube)[0];
-      expect(Math.hypot(head.x, head.z)).toBeLessThan(0.01);
-      expect(head.y).toBeGreaterThan(0.6);
+  it('3本の上端がひとところに集まる', () => {
+    const heads = BANANA.tubes!.map((tube) => layoutTube(tube)[0]);
+    for (const head of heads) {
+      expect(Math.hypot(head.x - heads[0].x, head.y - heads[0].y, head.z - heads[0].z)).toBeLessThan(
+        0.01,
+      );
     }
+    // へたはその集まったところから生えている
+    const [first] = heads;
+    const root = BANANA.stems![0].a;
+    expect(Math.hypot(root[0] - first.x, root[2] - first.z)).toBeLessThan(0.1);
+    expect(root[1]).toBeGreaterThan(first.y - 0.2);
   });
 
   it('筒の並びは毎回同じで、3本ぶんが集まる', () => {
